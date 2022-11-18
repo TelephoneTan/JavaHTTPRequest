@@ -177,13 +177,9 @@ public class HTTPRequest implements Cloneable {
                     if (!ResponseHeaderMap.isEmpty()) {
                         ResponseHeaderList = new LinkedList<>();
                         for (String key : ResponseHeaderMap.keySet()) {
-                            String k = Util.GetEmptyStringFromNull(key);
                             List<String> valueList = ResponseHeaderMap.get(key);
-                            if (valueList != null) {
-                                for (String value : valueList) {
-                                    String v = Util.GetEmptyStringFromNull(value);
-                                    ResponseHeaderList.add(new String[]{k, v});
-                                }
+                            for (String value : valueList) {
+                                ResponseHeaderList.add(new String[]{key, value});
                             }
                         }
                     }
