@@ -14,10 +14,7 @@ import pub.telephone.javapromise.async.task.once.OnceTask;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.Proxy;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -26,12 +23,19 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static pub.telephone.javahttprequest.network.mime.MIMEType.ApplicationOctetStream;
+import static pub.telephone.javahttprequest.network.mime.MIMEType.TextPlain;
 
 public class HTTPRequest implements Cloneable {
     public HTTPMethod Method;
     public String URL;
     public List<String[]> CustomizedHeaderList;
+    public byte[] RequestBinary;
     public List<String[]> RequestForm;
     public String RequestString;
     public File RequestFile;
@@ -45,7 +49,11 @@ public class HTTPRequest implements Cloneable {
     public HTTPCookieJar CookieJar;
     public Proxy Proxy;
     //
+    int initialized;
+    CountDownLatch saved;
     CountDownLatch enqueued;
+    CountDownLatch cancelled;
+    AtomicReference<Call> call;
     OnceTask<HTTPResult<HTTPRequest>> send;
     OnceTask<HTTPResult<InputStream>> stream;
     OnceTask<HTTPResult<byte[]>> byteArray;
@@ -54,8 +62,14 @@ public class HTTPRequest implements Cloneable {
     OnceTask<HTTPResult<JSONArray>> jsonArray;
     OnceTask<HTTPResult<Document>> htmlDocument;
 
+    /**
+     * 之所以要将一些初始化步骤放到 init 方法中是因为 clone 方法需要调用 init 方法完成克隆。
+     */
     void init() {
+        saved = new CountDownLatch(1);
         enqueued = new CountDownLatch(1);
+        cancelled = new CountDownLatch(1);
+        call = new AtomicReference<>(null);
         send = new OnceTask<>((resolver, rejector) -> {
             //
             OkHttpClient.Builder clientBuilder = client.newBuilder();
@@ -85,18 +99,23 @@ public class HTTPRequest implements Cloneable {
                 if (sb.length() > 0) {
                     RequestBody = okhttp3.RequestBody.create(
                             sb.toString(),
-                            MediaType.parse(MIMEType.X_WWW_Form_URLEncoded.Name)
+                            MediaType.parse(MIMEType.XWWWFormURLEncoded.Name)
                     );
                 }
             } else if (RequestString != null && !RequestString.isEmpty()) {
                 RequestBody = okhttp3.RequestBody.create(
                         RequestString,
-                        RequestContentType == null ? null : MediaType.parse(RequestContentType.Name)
+                        MediaType.parse((RequestContentType == null ? TextPlain : RequestContentType).Name)
                 );
             } else if (RequestFile != null) {
                 RequestBody = okhttp3.RequestBody.create(
                         RequestFile,
-                        RequestContentType == null ? null : MediaType.parse(RequestContentType.Name)
+                        MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
+                );
+            } else if (RequestBinary != null) {
+                RequestBody = okhttp3.RequestBody.create(
+                        RequestBinary,
+                        MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
                 );
             }
             //
@@ -154,8 +173,13 @@ public class HTTPRequest implements Cloneable {
                 clientBuilder.hostnameVerifier((hostname, session) -> true);
             }
             //
+            if (cancelled.await(0, TimeUnit.SECONDS)) {
+                return;
+            }
+            //
             enqueued.countDown();
-            clientBuilder.build().newCall(requestBuilder.build()).enqueue(new Callback() {
+            Call call = clientBuilder.build().newCall(requestBuilder.build());
+            call.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NotNull Call call, @NotNull IOException e) {
                     Util.WaitLatch(enqueued);
@@ -166,6 +190,11 @@ public class HTTPRequest implements Cloneable {
                 @Override
                 public void onResponse(@NotNull Call call, @NotNull Response response) {
                     Util.WaitLatch(enqueued);
+                    //
+                    send.Do().Catch(reason -> {
+                        response.close();
+                        return null;
+                    }).ForCancel(response::close);
                     //
                     StatusCode = response.code();
                     StatusMessage = response.message();
@@ -189,9 +218,10 @@ public class HTTPRequest implements Cloneable {
                     resolver.Resolve(result(HTTPRequest.this));
                 }
             });
+            this.call.set(call);
         });
         stream = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(Send().Then(value -> {
+                resolver.Resolve(send.Do().Then(value -> {
                     if (value.Result.response != null) {
                         ResponseBody body = value.Result.response.body();
                         if (body != null) {
@@ -206,17 +236,9 @@ public class HTTPRequest implements Cloneable {
         );
         byteArray = new OnceTask<>((resolver, rejector) ->
                 resolver.Resolve(Stream().Then(value -> {
-                    try {
-                        byte[] buf = new byte[1024];
-                        int len;
-                        ByteArrayOutputStream os = new ByteArrayOutputStream();
-                        while ((len = value.Result.read(buf)) > 0) {
-                            os.write(buf, 0, len);
-                        }
-                        return result(os.toByteArray());
-                    } finally {
-                        value.Result.close();
-                    }
+                    ByteArrayOutputStream os = new ByteArrayOutputStream();
+                    Util.Transfer(value.Result, os);
+                    return result(os.toByteArray());
                 }))
         );
         string = new OnceTask<>((resolver, rejector) ->
@@ -248,6 +270,10 @@ public class HTTPRequest implements Cloneable {
         htmlDocument = new OnceTask<>((resolver, rejector) ->
                 resolver.Resolve(String().Then(value -> result(Jsoup.parse(value.Result))))
         );
+        //
+        synchronized (this) {
+            initialized++;
+        }
     }
 
     //================================================
@@ -266,8 +292,13 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest SetProxy(java.net.Proxy proxy) {
-        Proxy = proxy;
+    public HTTPRequest SetMethod(HTTPMethod method) {
+        Method = method;
+        return this;
+    }
+
+    public HTTPRequest SetRequestBinary(byte[] requestBinary) {
+        RequestBinary = requestBinary;
         return this;
     }
 
@@ -276,69 +307,187 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
+    public HTTPRequest SetRequestString(String requestString) {
+        RequestString = requestString;
+        return this;
+    }
+
+    public HTTPRequest SetRequestFile(File requestFile) {
+        RequestFile = requestFile;
+        return this;
+    }
+
+    public HTTPRequest SetProxy(java.net.Proxy proxy) {
+        Proxy = proxy;
+        return this;
+    }
+
+    public HTTPRequest SetConnectTimeout(Duration connectTimeout) {
+        ConnectTimeout = connectTimeout;
+        return this;
+    }
+
+    public HTTPRequest SetReadTimeout(Duration readTimeout) {
+        ReadTimeout = readTimeout;
+        return this;
+    }
+
+    public HTTPRequest SetWriteTimeout(Duration writeTimeout) {
+        WriteTimeout = writeTimeout;
+        return this;
+    }
+
+    public HTTPRequest SetCustomizedHeaderList(List<String[]> customizedHeaderList) {
+        CustomizedHeaderList = customizedHeaderList;
+        return this;
+    }
+
     public HTTPRequest(String URL) {
         this.URL = URL;
         init();
-    }
-
-    @Override
-    public HTTPRequest clone() {
-        try {
-            HTTPRequest clone = (HTTPRequest) super.clone();
-            //
-            if (CustomizedHeaderList != null) {
-                clone.CustomizedHeaderList = new ArrayList<>(CustomizedHeaderList.size());
-                for (String[] v : CustomizedHeaderList) {
-                    clone.CustomizedHeaderList.add(v.clone());
-                }
-            }
-            if (RequestForm != null) {
-                clone.RequestForm = new ArrayList<>(RequestForm.size());
-                for (String[] v : RequestForm) {
-                    clone.RequestForm.add(v.clone());
-                }
-            }
-            clone.init();
-            //
-            return clone;
-        } catch (CloneNotSupportedException e) {
-            throw new AssertionError();
-        }
     }
 
     <E> HTTPResult<E> result(E result) {
         return new HTTPResult<>(this, result);
     }
 
+
+    // After init ========================================================
+
+    <R> R afterInit(Callable<R> op) {
+        synchronized (this) {
+            initialized++;
+        }
+        try {
+            return op.call();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    void afterInit(Runnable op) {
+        afterInit(() -> {
+            op.run();
+            return null;
+        });
+    }
+
+    @Override
+    public HTTPRequest clone() {
+        return afterInit(() -> {
+            try {
+                HTTPRequest clone = (HTTPRequest) super.clone();
+                //
+                if (CustomizedHeaderList != null) {
+                    clone.CustomizedHeaderList = new ArrayList<>(CustomizedHeaderList.size());
+                    for (String[] v : CustomizedHeaderList) {
+                        clone.CustomizedHeaderList.add(v.clone());
+                    }
+                }
+                if (RequestForm != null) {
+                    clone.RequestForm = new ArrayList<>(RequestForm.size());
+                    for (String[] v : RequestForm) {
+                        clone.RequestForm.add(v.clone());
+                    }
+                }
+                if (RequestBinary != null) {
+                    clone.RequestBinary = RequestBinary.clone();
+                }
+                clone.init();
+                //
+                return clone;
+            } catch (CloneNotSupportedException e) {
+                throw new AssertionError();
+            }
+        });
+    }
+
+    <R> R trigger(Callable<R> op) {
+        return afterInit(() -> {
+            saved.await(0, TimeUnit.SECONDS);
+            return op.call();
+        });
+    }
+
+    public HTTPRequest Save() {
+        return afterInit(() -> {
+            saved.countDown();
+            return this;
+        });
+    }
+
+    public void Cancel() {
+        afterInit(() -> {
+            send.Cancel();
+            Call call = this.call.get();
+            if (call == null) {
+                cancelled.countDown();
+            } else {
+                call.cancel();
+            }
+        });
+    }
+
     public Promise<HTTPResult<HTTPRequest>> Send() {
-        return send.Do();
+        return trigger(() ->
+                send.Do()
+                        .Then(value -> {
+                            value.Result.response.close();
+                            return value;
+                        })
+        );
     }
 
     public Promise<HTTPResult<InputStream>> Stream() {
-        return stream.Do();
+        return trigger(stream::Do);
     }
 
     public Promise<HTTPResult<byte[]>> ByteArray() {
-        return byteArray.Do();
+        return trigger(byteArray::Do);
     }
 
     public Promise<HTTPResult<String>> String() {
-        return string.Do();
+        return trigger(string::Do);
     }
 
     public Promise<HTTPResult<JSONObject>> JSONObject() {
-        return jsonObject.Do();
+        return trigger(jsonObject::Do);
     }
 
     public Promise<HTTPResult<JSONArray>> JSONArray() {
-        return jsonArray.Do();
+        return trigger(jsonArray::Do);
     }
 
     public Promise<HTTPResult<Document>> HTMLDocument() {
-        return htmlDocument.Do();
+        return trigger(htmlDocument::Do);
     }
 
     public Promise<HTTPResult<Document>> HTMLDocument(String baseURI) {
-        return String().Then(value -> result(Jsoup.parse(value.Result, baseURI)));
+        return trigger(() -> string.Do().Then(value -> result(Jsoup.parse(value.Result, baseURI))));
+    }
+
+    Promise<HTTPResult<File>> file(File file, boolean append) {
+        return trigger(() -> stream.Do().Then(value -> {
+            Util.Transfer(value.Result, new FileOutputStream(file, append));
+            return result(file);
+        }));
+    }
+
+    public Promise<HTTPResult<File>> File(File file) {
+        return file(file, false);
+    }
+
+    public Promise<HTTPResult<File>> File(File file, boolean append) {
+        return file(file, append);
+    }
+
+    // -------------------------------------
+
+    public static HTTPRequest Get(String url) {
+        return new HTTPRequest(url).SetMethod(HTTPMethod.GET);
+    }
+
+    public static HTTPRequest Post(String url) {
+        return new HTTPRequest(url).SetMethod(HTTPMethod.POST);
     }
 }

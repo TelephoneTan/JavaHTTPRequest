@@ -1,7 +1,9 @@
 package pub.telephone.javahttprequest.network.mime;
 
 public enum MIMEType {
-    X_WWW_Form_URLEncoded("application/x-www-form-urlencoded");
+    XWWWFormURLEncoded("application/x-www-form-urlencoded"),
+    TextPlain("text/plain"),
+    ApplicationOctetStream("application/octet-stream");
 
     public final String Name;
 

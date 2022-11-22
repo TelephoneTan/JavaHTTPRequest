@@ -1,5 +1,9 @@
 package pub.telephone.javahttprequest.util;
 
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -92,5 +96,24 @@ public class Util {
             index = 0;
         }
         return index;
+    }
+
+    public static void Transfer(InputStream inputStream, OutputStream outputStream) throws IOException {
+        try (InputStream is = inputStream; OutputStream os = outputStream) {
+            int len;
+            byte[] buf = new byte[65536];
+            while (true) {
+                try {
+                    len = is.read(buf);
+                } catch (EOFException ignored) {
+                    len = -1;
+                }
+                if (len > 0) {
+                    os.write(buf, 0, len);
+                } else {
+                    return;
+                }
+            }
+        }
     }
 }
