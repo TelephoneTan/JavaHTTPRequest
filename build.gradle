@@ -1,11 +1,34 @@
 plugins {
     id 'java'
+    id 'maven-publish'
 }
 
 group 'org.example'
 version '1.0-SNAPSHOT'
 
 apply from: "./local.build.gradle"
+
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/TelephoneTan/JavaHTTPRequest")
+            credentials {
+                username = project.ext.gpr_github_user ?: System.getenv("GITHUB_USERNAME")
+                password = project.ext.gpr_github_key ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+    publications {
+        gpr(MavenPublication) {
+            groupId = 'pub.telephone'
+            artifactId = 'java-http-request'
+            version = '1.0.0'
+
+            from(components.java)
+        }
+    }
+}
 
 repositories {
     mavenCentral()
