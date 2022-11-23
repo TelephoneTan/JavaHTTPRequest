@@ -10,6 +10,7 @@ import pub.telephone.javapromise.async.promise.PromiseRejectedListener;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -18,8 +19,10 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testCookieJarAndHTML();
-        testPost();
+//        testCookieJarAndHTML();
+//        testPost();
+        testGBKString();
+        testGBKHTML();
     }
 
     void testPost() {
@@ -114,5 +117,42 @@ public class TestHTTP {
         request.clone()
                 .SetCookieJar(jar)
                 .HTMLDocument().Then(then).Catch(cat).Await();
+    }
+
+    void testGBKString() {
+        String s = "你好，世界";
+        Charset gbk = Charset.forName("GBK");
+        HTTPRequest.Post("http://localhost:3000").SetRequestBinary(s.getBytes(gbk)).String().Then(stringHTTPResult -> {
+            System.out.println(stringHTTPResult.Result);
+            return null;
+        }).Await();
+        HTTPRequest.Post("http://localhost:3000").SetRequestBinary(s.getBytes(gbk)).String(gbk).Then(stringHTTPResult -> {
+            System.out.println(stringHTTPResult.Result);
+            return null;
+        }).Await();
+    }
+
+    void testGBKHTML() {
+        String s = "<!DOCTYPE html>\n" +
+                "<html lang=\"en\">\n" +
+                "  <head>\n" +
+                "    <meta charset=\"utf-8\">\n" +
+                "    <title>title</title>\n" +
+                "    <link rel=\"stylesheet\" href=\"style.css\">\n" +
+                "    <script src=\"script.js\"></script>\n" +
+                "  </head>\n" +
+                "  <body>\n" +
+                "    你好，世界\n" +
+                "  </body>\n" +
+                "</html>";
+        Charset gbk = Charset.forName("GBK");
+        HTTPRequest.Post("http://localhost:3000").SetRequestBinary(s.getBytes(gbk)).HTMLDocument().Then(value -> {
+            System.out.println(value.Result.toString());
+            return null;
+        }).Await();
+        HTTPRequest.Post("http://localhost:3000").SetRequestBinary(s.getBytes(gbk)).HTMLDocument(gbk).Then(value -> {
+            System.out.println(value.Result.toString());
+            return null;
+        }).Await();
     }
 }

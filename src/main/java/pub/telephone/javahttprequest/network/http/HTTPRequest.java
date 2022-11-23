@@ -235,40 +235,25 @@ public class HTTPRequest implements Cloneable {
                 }))
         );
         byteArray = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(Stream().Then(value -> {
+                resolver.Resolve(stream.Do().Then(value -> {
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     Util.Transfer(value.Result, os);
                     return result(os.toByteArray());
                 }))
         );
         string = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(ByteArray().Then(value -> {
-                    Charset charset = StandardCharsets.UTF_8;
-                    List<String> contentTypeList = Util.MapGet(
-                            value.Request.ResponseHeaderMap,
-                            HTTPHeader.Content_Type.Name
-                    );
-                    if (contentTypeList != null && !contentTypeList.isEmpty()) {
-                        String contentType = contentTypeList.get(0);
-                        MediaType mediaType = MediaType.parse(contentType);
-                        if (mediaType != null) {
-                            Charset readCharset = mediaType.charset();
-                            if (readCharset != null) {
-                                charset = readCharset;
-                            }
-                        }
-                    }
-                    return result(new String(value.Result, charset));
-                }))
+                resolver.Resolve(byteArray.Do().Then(value ->
+                        result(new String(value.Result, calculateCharset(value, StandardCharsets.UTF_8)))
+                ))
         );
         jsonObject = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(String().Then(value -> result(new JSONObject(value.Result))))
+                resolver.Resolve(string.Do().Then(value -> result(new JSONObject(value.Result))))
         );
         jsonArray = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(String().Then(value -> result(new JSONArray(value.Result))))
+                resolver.Resolve(string.Do().Then(value -> result(new JSONArray(value.Result))))
         );
         htmlDocument = new OnceTask<>((resolver, rejector) ->
-                resolver.Resolve(String().Then(value -> result(Jsoup.parse(value.Result))))
+                resolver.Resolve(string.Do().Then(value -> result(Jsoup.parse(value.Result))))
         );
         //
         synchronized (this) {
@@ -351,6 +336,23 @@ public class HTTPRequest implements Cloneable {
         return new HTTPResult<>(this, result);
     }
 
+    static Charset calculateCharset(HTTPResult<byte[]> value, Charset defaultCharset) {
+        List<String> contentTypeList = Util.MapGet(
+                value.Request.ResponseHeaderMap,
+                HTTPHeader.Content_Type.Name
+        );
+        if (contentTypeList != null && !contentTypeList.isEmpty()) {
+            String contentType = contentTypeList.get(0);
+            MediaType mediaType = MediaType.parse(contentType);
+            if (mediaType != null) {
+                Charset readCharset = mediaType.charset();
+                if (readCharset != null) {
+                    return readCharset;
+                }
+            }
+        }
+        return defaultCharset;
+    }
 
     // After init ========================================================
 
@@ -450,6 +452,12 @@ public class HTTPRequest implements Cloneable {
         return trigger(string::Do);
     }
 
+    public Promise<HTTPResult<String>> String(Charset charset) {
+        return trigger(() -> byteArray.Do().Then(value ->
+                result(new String(value.Result, calculateCharset(value, charset)))
+        ));
+    }
+
     public Promise<HTTPResult<JSONObject>> JSONObject() {
         return trigger(jsonObject::Do);
     }
@@ -462,8 +470,16 @@ public class HTTPRequest implements Cloneable {
         return trigger(htmlDocument::Do);
     }
 
+    public Promise<HTTPResult<Document>> HTMLDocument(Charset charset) {
+        return trigger(() -> String(charset).Then(value -> result(Jsoup.parse(value.Result))));
+    }
+
     public Promise<HTTPResult<Document>> HTMLDocument(String baseURI) {
         return trigger(() -> string.Do().Then(value -> result(Jsoup.parse(value.Result, baseURI))));
+    }
+
+    public Promise<HTTPResult<Document>> HTMLDocument(String baseURI, Charset charset) {
+        return trigger(() -> String(charset).Then(value -> result(Jsoup.parse(value.Result, baseURI))));
     }
 
     Promise<HTTPResult<File>> file(File file, boolean append) {
