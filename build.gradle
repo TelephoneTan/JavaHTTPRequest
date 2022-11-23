@@ -5,8 +5,17 @@ plugins {
 group 'org.example'
 version '1.0-SNAPSHOT'
 
+apply from: "./local.build.gradle"
+
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/TelephoneTan/JavaPromise")
+        credentials {
+            username = project.ext.gpr_github_user ?: System.getenv("GITHUB_USERNAME")
+            password = project.ext.gpr_github_key ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
 }
 
 sourceCompatibility = 1.8
@@ -17,7 +26,7 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.10.0'
     implementation 'org.json:json:20220924'
     implementation 'org.jsoup:jsoup:1.15.3'
-    implementation project(':JavaPromise')
+    implementation 'pub.telephone:java-promise:1.0.0'
 }
 
 test {
