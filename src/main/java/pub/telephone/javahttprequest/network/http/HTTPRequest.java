@@ -348,6 +348,26 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
+    public HTTPRequest SetRequestBody(RequestBody requestBody) {
+        RequestBody = requestBody;
+        return this;
+    }
+
+    public HTTPRequest SetRequestContentType(MIMEType requestContentType) {
+        RequestContentType = requestContentType;
+        return this;
+    }
+
+    public HTTPRequest SetQuickTest(boolean quickTest) {
+        IsQuickTest = quickTest;
+        return this;
+    }
+
+    public HTTPRequest SetFollowRedirect(boolean followRedirect) {
+        FollowRedirect = followRedirect;
+        return this;
+    }
+
     public HTTPRequest(String URL) {
         this.URL = URL;
         init();
