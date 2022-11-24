@@ -19,10 +19,10 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-//        testCookieJarAndHTML();
+        testCookieJarAndHTML();
 //        testPost();
-        testGBKString();
-        testGBKHTML();
+//        testGBKString();
+//        testGBKHTML();
     }
 
     void testPost() {
