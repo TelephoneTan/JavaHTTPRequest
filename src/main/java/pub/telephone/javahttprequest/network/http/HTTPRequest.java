@@ -272,6 +272,27 @@ public class HTTPRequest implements Cloneable {
 
     static final OkHttpClient client = new OkHttpClient();
 
+    public HTTPRequest ToGet() {
+        return SetMethod(HTTPMethod.GET);
+    }
+
+    public HTTPRequest ToGet(String url) {
+        return SetMethod(HTTPMethod.GET).SetURL(url);
+    }
+
+    public HTTPRequest ToPost() {
+        return SetMethod(HTTPMethod.POST);
+    }
+
+    public HTTPRequest ToPost(String url) {
+        return SetMethod(HTTPMethod.POST).SetURL(url);
+    }
+
+    public HTTPRequest SetURL(String url) {
+        this.URL = url;
+        return this;
+    }
+
     public HTTPRequest SetCookieJar(HTTPCookieJar cookieJar) {
         CookieJar = cookieJar;
         return this;
