@@ -4,8 +4,10 @@ import pub.telephone.javahttprequest.network.http.HTTPCookieJar;
 import pub.telephone.javahttprequest.network.http.HTTPRequest;
 import pub.telephone.javahttprequest.network.http.HTTPResult;
 import pub.telephone.javapromise.async.Async;
+import pub.telephone.javapromise.async.promise.Promise;
 import pub.telephone.javapromise.async.promise.PromiseFulfilledListener;
 import pub.telephone.javapromise.async.promise.PromiseRejectedListener;
+import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 
 import java.io.File;
 import java.net.InetSocketAddress;
@@ -19,10 +21,26 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testCookieJarAndHTML();
+        testSemaphore();
+//        testCookieJarAndHTML();
 //        testPost();
 //        testGBKString();
 //        testGBKHTML();
+    }
+
+    void testSemaphore() {
+        long sts = System.currentTimeMillis();
+        HTTPRequest request = new HTTPRequest("https://www.baidu.com", new PromiseSemaphore(1));
+        List<Promise<Object>> all = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            all.add(request.clone().String().Then(v -> {
+//                System.out.println(v.Request.StatusCode);
+                return null;
+            }));
+        }
+        Promise.AwaitAll(all);
+        long ets = System.currentTimeMillis();
+        System.out.printf("用时 %dms\n", ets - sts);
     }
 
     void testPost() {

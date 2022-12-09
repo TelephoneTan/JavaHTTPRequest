@@ -9,6 +9,7 @@ import org.jsoup.nodes.Document;
 import pub.telephone.javahttprequest.network.mime.MIMEType;
 import pub.telephone.javahttprequest.util.Util;
 import pub.telephone.javapromise.async.promise.Promise;
+import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 import pub.telephone.javapromise.async.task.once.OnceTask;
 
 import javax.net.ssl.SSLContext;
@@ -48,6 +49,8 @@ public class HTTPRequest implements Cloneable {
     public boolean FollowRedirect = true;
     public HTTPCookieJar CookieJar;
     public Proxy Proxy;
+    //
+    public final PromiseSemaphore RequestSemaphore;
     //
     int initialized;
     CountDownLatch saved;
@@ -219,7 +222,7 @@ public class HTTPRequest implements Cloneable {
                 }
             });
             this.call.set(call);
-        });
+        }, RequestSemaphore);
         stream = new OnceTask<>((resolver, rejector) ->
                 resolver.Resolve(send.Do().Then(value -> {
                     if (value.Result.response != null) {
@@ -368,9 +371,14 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest(String URL) {
+    public HTTPRequest(String URL, PromiseSemaphore requestSemaphore) {
         this.URL = URL;
+        this.RequestSemaphore = requestSemaphore;
         init();
+    }
+
+    public HTTPRequest(String URL) {
+        this(URL, null);
     }
 
     <E> HTTPResult<E> result(E result) {
