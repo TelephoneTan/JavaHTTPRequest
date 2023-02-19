@@ -138,7 +138,7 @@ public class HTTPRequest implements Cloneable {
                 }
             }
             //
-            clientBuilder.followSslRedirects(FollowRedirect).followSslRedirects(FollowRedirect);
+            clientBuilder.followRedirects(FollowRedirect).followSslRedirects(FollowRedirect);
             //
             if (IsQuickTest) {
                 ConnectTimeout = ReadTimeout = WriteTimeout = Duration.ofMillis(500);
