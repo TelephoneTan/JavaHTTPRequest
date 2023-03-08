@@ -47,7 +47,7 @@ public class HTTPRequest implements Cloneable {
     public Duration WriteTimeout = Duration.ofSeconds(20);
     public boolean IsQuickTest;
     public boolean FollowRedirect = true;
-    public HTTPCookieJar CookieJar;
+    public HTTPFlexibleCookieJar CookieJar;
     public Proxy Proxy;
     //
     public final PromiseSemaphore RequestSemaphore;
@@ -296,7 +296,7 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest SetCookieJar(HTTPCookieJar cookieJar) {
+    public HTTPRequest SetCookieJar(HTTPFlexibleCookieJar cookieJar) {
         CookieJar = cookieJar;
         return this;
     }

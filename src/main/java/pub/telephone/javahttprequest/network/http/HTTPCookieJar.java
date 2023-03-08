@@ -1,13 +1,12 @@
 package pub.telephone.javahttprequest.network.http;
 
 import okhttp3.Cookie;
-import okhttp3.CookieJar;
 import okhttp3.HttpUrl;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-public class HTTPCookieJar implements CookieJar {
+public class HTTPCookieJar implements HTTPFlexibleCookieJar {
     static class cookieKey {
         final String name;
         final String domain;
