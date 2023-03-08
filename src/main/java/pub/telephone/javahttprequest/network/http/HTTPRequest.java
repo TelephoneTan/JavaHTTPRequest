@@ -115,7 +115,7 @@ public class HTTPRequest implements Cloneable {
                         RequestFile,
                         MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
                 );
-            } else if (RequestBinary != null) {
+            } else if (RequestBinary != null && RequestBinary.length > 0) {
                 RequestBody = okhttp3.RequestBody.create(
                         RequestBinary,
                         MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
