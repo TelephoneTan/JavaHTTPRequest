@@ -33,6 +33,9 @@ import static pub.telephone.javahttprequest.network.mime.MIMEType.ApplicationOct
 import static pub.telephone.javahttprequest.network.mime.MIMEType.TextPlain;
 
 public class HTTPRequest implements Cloneable {
+    static final OkHttpClient client = new OkHttpClient();
+    //
+    public final PromiseSemaphore RequestSemaphore;
     public HTTPMethod Method;
     public String URL;
     public List<String[]> CustomizedHeaderList;
@@ -42,6 +45,7 @@ public class HTTPRequest implements Cloneable {
     public File RequestFile;
     public RequestBody RequestBody;
     public MIMEType RequestContentType;
+    public String RequestContentTypeHeader;
     public Duration ConnectTimeout = Duration.ofSeconds(2);
     public Duration ReadTimeout = Duration.ofSeconds(20);
     public Duration WriteTimeout = Duration.ofSeconds(20);
@@ -49,8 +53,11 @@ public class HTTPRequest implements Cloneable {
     public boolean FollowRedirect = true;
     public HTTPFlexibleCookieJar CookieJar;
     public Proxy Proxy;
-    //
-    public final PromiseSemaphore RequestSemaphore;
+    //================================================
+    public int StatusCode;
+    public String StatusMessage;
+    public List<String[]> ResponseHeaderList;
+    public Map<String, List<String>> ResponseHeaderMap;
     //
     int initialized;
     CountDownLatch saved;
@@ -64,6 +71,45 @@ public class HTTPRequest implements Cloneable {
     OnceTask<HTTPResult<JSONObject>> jsonObject;
     OnceTask<HTTPResult<JSONArray>> jsonArray;
     OnceTask<HTTPResult<Document>> htmlDocument;
+    //
+    Response response;
+    //------------------------------------------------
+
+    public HTTPRequest(String URL, PromiseSemaphore requestSemaphore) {
+        this.URL = URL;
+        this.RequestSemaphore = requestSemaphore;
+        init();
+    }
+
+    public HTTPRequest(String URL) {
+        this(URL, null);
+    }
+
+    static Charset calculateCharset(HTTPResult<byte[]> value, Charset defaultCharset) {
+        List<String> contentTypeList = Util.MapGet(
+                value.Request.ResponseHeaderMap,
+                HTTPHeader.Content_Type.Name
+        );
+        if (contentTypeList != null && !contentTypeList.isEmpty()) {
+            String contentType = contentTypeList.get(0);
+            MediaType mediaType = MediaType.parse(contentType);
+            if (mediaType != null) {
+                Charset readCharset = mediaType.charset();
+                if (readCharset != null) {
+                    return readCharset;
+                }
+            }
+        }
+        return defaultCharset;
+    }
+
+    public static HTTPRequest Get(String url) {
+        return new HTTPRequest(url).SetMethod(HTTPMethod.GET);
+    }
+
+    public static HTTPRequest Post(String url) {
+        return new HTTPRequest(url).SetMethod(HTTPMethod.POST);
+    }
 
     /**
      * 之所以要将一些初始化步骤放到 init 方法中是因为 clone 方法需要调用 init 方法完成克隆。
@@ -100,25 +146,39 @@ public class HTTPRequest implements Cloneable {
                     }
                 }
                 if (sb.length() > 0) {
-                    RequestBody = okhttp3.RequestBody.create(
-                            sb.toString(),
-                            MediaType.parse(MIMEType.XWWWFormURLEncoded.Name)
-                    );
+                    RequestBody = okhttp3.RequestBody.create(sb.toString(), MediaType.parse(MIMEType.XWWWFormURLEncoded.Name));
                 }
             } else if (RequestString != null && !RequestString.isEmpty()) {
                 RequestBody = okhttp3.RequestBody.create(
                         RequestString,
-                        MediaType.parse((RequestContentType == null ? TextPlain : RequestContentType).Name)
+                        MediaType.parse(
+                                RequestContentType == null ?
+                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                TextPlain.Name :
+                                                RequestContentTypeHeader
+                                        ) :
+                                        RequestContentType.Name
+                        )
                 );
             } else if (RequestFile != null) {
-                RequestBody = okhttp3.RequestBody.create(
-                        RequestFile,
-                        MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
+                RequestBody = okhttp3.RequestBody.create(RequestFile, MediaType.parse(
+                                RequestContentType == null ?
+                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                ApplicationOctetStream.Name :
+                                                RequestContentTypeHeader
+                                        ) :
+                                        RequestContentType.Name
+                        )
                 );
             } else if (RequestBinary != null && RequestBinary.length > 0) {
-                RequestBody = okhttp3.RequestBody.create(
-                        RequestBinary,
-                        MediaType.parse((RequestContentType == null ? ApplicationOctetStream : RequestContentType).Name)
+                RequestBody = okhttp3.RequestBody.create(RequestBinary, MediaType.parse(
+                                RequestContentType == null ?
+                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                ApplicationOctetStream.Name :
+                                                RequestContentTypeHeader
+                                        ) :
+                                        RequestContentType.Name
+                        )
                 );
             }
             //
@@ -264,17 +324,6 @@ public class HTTPRequest implements Cloneable {
         }
     }
 
-    //================================================
-    public int StatusCode;
-    public String StatusMessage;
-    public List<String[]> ResponseHeaderList;
-    public Map<String, List<String>> ResponseHeaderMap;
-    //
-    Response response;
-    //------------------------------------------------
-
-    static final OkHttpClient client = new OkHttpClient();
-
     public HTTPRequest ToGet() {
         return SetMethod(HTTPMethod.GET);
     }
@@ -361,6 +410,11 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
+    public HTTPRequest SetRequestContentTypeHeader(String requestContentTypeHeader) {
+        RequestContentTypeHeader = requestContentTypeHeader;
+        return this;
+    }
+
     public HTTPRequest SetQuickTest(boolean quickTest) {
         IsQuickTest = quickTest;
         return this;
@@ -371,36 +425,8 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest(String URL, PromiseSemaphore requestSemaphore) {
-        this.URL = URL;
-        this.RequestSemaphore = requestSemaphore;
-        init();
-    }
-
-    public HTTPRequest(String URL) {
-        this(URL, null);
-    }
-
     <E> HTTPResult<E> result(E result) {
         return new HTTPResult<>(this, result);
-    }
-
-    static Charset calculateCharset(HTTPResult<byte[]> value, Charset defaultCharset) {
-        List<String> contentTypeList = Util.MapGet(
-                value.Request.ResponseHeaderMap,
-                HTTPHeader.Content_Type.Name
-        );
-        if (contentTypeList != null && !contentTypeList.isEmpty()) {
-            String contentType = contentTypeList.get(0);
-            MediaType mediaType = MediaType.parse(contentType);
-            if (mediaType != null) {
-                Charset readCharset = mediaType.charset();
-                if (readCharset != null) {
-                    return readCharset;
-                }
-            }
-        }
-        return defaultCharset;
     }
 
     // After init ========================================================
@@ -544,15 +570,5 @@ public class HTTPRequest implements Cloneable {
 
     public Promise<HTTPResult<File>> File(File file, boolean append) {
         return file(file, append);
-    }
-
-    // -------------------------------------
-
-    public static HTTPRequest Get(String url) {
-        return new HTTPRequest(url).SetMethod(HTTPMethod.GET);
-    }
-
-    public static HTTPRequest Post(String url) {
-        return new HTTPRequest(url).SetMethod(HTTPMethod.POST);
     }
 }
