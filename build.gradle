@@ -23,7 +23,7 @@ publishing {
         gpr(MavenPublication) {
             groupId = 'pub.telephone'
             artifactId = 'java-http-request'
-            version = '1.11.2'
+            version = '1.11.3'
 
             from(components.java)
         }
