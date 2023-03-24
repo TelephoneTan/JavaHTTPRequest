@@ -101,7 +101,7 @@ public class Util {
     public static void Transfer(InputStream inputStream, OutputStream outputStream) throws IOException {
         try (InputStream is = inputStream; OutputStream os = outputStream) {
             int len;
-            byte[] buf = new byte[65536];
+            byte[] buf = new byte[1024 * 16];
             while (true) {
                 try {
                     len = is.read(buf);
