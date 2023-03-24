@@ -23,7 +23,10 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -266,8 +269,8 @@ public class HTTPRequest implements Cloneable {
                     Map<String, List<String>> multimap = headers.toMultimap();
                     ResponseHeaderMap = new HashMap<>(multimap);
                     //
+                    ResponseHeaderList = new ArrayList<>();
                     if (!ResponseHeaderMap.isEmpty()) {
-                        ResponseHeaderList = new LinkedList<>();
                         for (String key : ResponseHeaderMap.keySet()) {
                             List<String> valueList = ResponseHeaderMap.get(key);
                             for (String value : valueList) {
