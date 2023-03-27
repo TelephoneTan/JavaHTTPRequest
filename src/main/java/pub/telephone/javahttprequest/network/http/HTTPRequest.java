@@ -562,10 +562,10 @@ public class HTTPRequest implements Cloneable {
         return jo.toString();
     }
 
-    public void Deserialize(String s) {
+    public HTTPRequest Deserialize(String s) {
         Object obj = new JSONTokener(s).nextValue();
         if (!(obj instanceof JSONObject)) {
-            return;
+            return this;
         }
         JSONObject jo = (JSONObject) obj;
         {
@@ -749,6 +749,7 @@ public class HTTPRequest implements Cloneable {
                 responseBinary = jo.isNull(key) ? null : Base64.getDecoder().decode(jo.getString(key));
             }
         }
+        return this;
     }
 
     <R> R trigger(Callable<R> op) {

@@ -30,13 +30,13 @@ public class TestHTTP {
     }
 
     void testGet() {
-        HTTPRequest request = new HTTPRequest("https://google.com");
-        request.SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7890));
-        request.Deserialize(request.Serialize());
-        request.String().Then(strRes -> {
-            System.out.println(strRes.Result);
-            return null;
-        }).Await();
+        HTTPRequest request = new HTTPRequest("https://google.com")
+                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7890));
+        request.Deserialize(request.Serialize())
+                .String().Then(strRes -> {
+                    System.out.println(strRes.Result);
+                    return null;
+                }).Await();
     }
 
     void testSemaphore() {
