@@ -4,8 +4,10 @@ import okhttp3.*;
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import pub.telephone.javahttprequest.network.NetworkProxy;
 import pub.telephone.javahttprequest.network.mime.MIMEType;
 import pub.telephone.javahttprequest.util.Util;
 import pub.telephone.javapromise.async.promise.Promise;
@@ -16,27 +18,29 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import java.io.*;
-import java.net.Proxy;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static pub.telephone.javahttprequest.network.mime.MIMEType.ApplicationOctetStream;
-import static pub.telephone.javahttprequest.network.mime.MIMEType.TextPlain;
+import static pub.telephone.javahttprequest.network.mime.MIMEType.TextPlainUTF8;
 
 public class HTTPRequest implements Cloneable {
     static final OkHttpClient client = new OkHttpClient();
+    static final boolean defaultIsQuickTest = false;
+    static final boolean defaultFollowRedirect = true;
+    static final int defaultStatusCode = 0;
+    static final Duration defaultConnectTimeout = Duration.ofSeconds(2);
+    static final Duration defaultReadTimeout = Duration.ofSeconds(20);
+    static final Duration defaultWriteTimeout = Duration.ofSeconds(20);
     //
     public final PromiseSemaphore RequestSemaphore;
     public HTTPMethod Method;
@@ -49,18 +53,23 @@ public class HTTPRequest implements Cloneable {
     public RequestBody RequestBody;
     public MIMEType RequestContentType;
     public String RequestContentTypeHeader;
-    public Duration ConnectTimeout = Duration.ofSeconds(2);
-    public Duration ReadTimeout = Duration.ofSeconds(20);
-    public Duration WriteTimeout = Duration.ofSeconds(20);
-    public boolean IsQuickTest;
-    public boolean FollowRedirect = true;
+    public Duration Timeout;
+    public Duration ConnectTimeout = defaultConnectTimeout;
+    public Duration ReadTimeout = defaultReadTimeout;
+    public Duration WriteTimeout = defaultWriteTimeout;
+    public boolean IsQuickTest = defaultIsQuickTest;
+    public boolean FollowRedirect = defaultFollowRedirect;
     public HTTPFlexibleCookieJar CookieJar;
-    public Proxy Proxy;
+    public Boolean AutoSendCookies;
+    public Boolean AutoReceiveCookies;
+    public NetworkProxy Proxy;
     //================================================
-    public int StatusCode;
+    public int StatusCode = defaultStatusCode;
     public String StatusMessage;
     public List<String[]> ResponseHeaderList;
     public Map<String, List<String>> ResponseHeaderMap;
+    //
+    byte[] responseBinary;
     //
     int initialized;
     CountDownLatch saved;
@@ -78,20 +87,32 @@ public class HTTPRequest implements Cloneable {
     Response response;
     //------------------------------------------------
 
-    public HTTPRequest(String URL, PromiseSemaphore requestSemaphore) {
-        this.URL = URL;
+    public HTTPRequest(String url, PromiseSemaphore requestSemaphore) {
+        this.RequestSemaphore = requestSemaphore;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(String url) {
+        this.RequestSemaphore = null;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(PromiseSemaphore requestSemaphore) {
         this.RequestSemaphore = requestSemaphore;
         init();
     }
 
-    public HTTPRequest(String URL) {
-        this(URL, null);
+    public HTTPRequest() {
+        this.RequestSemaphore = null;
+        init();
     }
 
     static Charset calculateCharset(HTTPResult<byte[]> value, Charset defaultCharset) {
         List<String> contentTypeList = Util.MapGet(
                 value.Request.ResponseHeaderMap,
-                HTTPHeader.Content_Type.Name
+                HTTPHeader.ContentType.Name
         );
         if (contentTypeList != null && !contentTypeList.isEmpty()) {
             String contentType = contentTypeList.get(0);
@@ -157,7 +178,7 @@ public class HTTPRequest implements Cloneable {
                         MediaType.parse(
                                 RequestContentType == null ?
                                         (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
-                                                TextPlain.Name :
+                                                TextPlainUTF8.Name :
                                                 RequestContentTypeHeader
                                         ) :
                                         RequestContentType.Name
@@ -203,19 +224,31 @@ public class HTTPRequest implements Cloneable {
             //
             clientBuilder.followRedirects(FollowRedirect).followSslRedirects(FollowRedirect);
             //
+            if (Timeout == null) {
+                Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
+            }
             if (IsQuickTest) {
                 ConnectTimeout = ReadTimeout = WriteTimeout = Duration.ofMillis(500);
+                Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
             }
+            clientBuilder.callTimeout(Timeout);
             clientBuilder.connectTimeout(ConnectTimeout);
             clientBuilder.readTimeout(ReadTimeout);
             clientBuilder.writeTimeout(WriteTimeout);
             //
             if (CookieJar != null) {
+                if (AutoSendCookies != null && AutoReceiveCookies != null) {
+                    CookieJar = CookieJar.WithReadWrite(AutoSendCookies, AutoReceiveCookies);
+                } else if (AutoSendCookies != null) {
+                    CookieJar = CookieJar.WithRead(AutoSendCookies);
+                } else if (AutoReceiveCookies != null) {
+                    CookieJar = CookieJar.WithWrite(AutoReceiveCookies);
+                }
                 clientBuilder.cookieJar(CookieJar);
             }
             //
             if (Proxy != null) {
-                clientBuilder.proxy(Proxy);
+                clientBuilder.proxy(Proxy.Proxy());
                 //
                 TrustManager[] trustAllCerts = new TrustManager[]{
                         new X509TrustManager() {
@@ -304,7 +337,8 @@ public class HTTPRequest implements Cloneable {
                 resolver.Resolve(stream.Do().Then(value -> {
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     Util.Transfer(value.Result, os);
-                    return result(os.toByteArray());
+                    value.Request.responseBinary = os.toByteArray();
+                    return result(value.Request.responseBinary);
                 }))
         );
         string = new OnceTask<>((resolver, rejector) ->
@@ -378,7 +412,7 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest SetProxy(java.net.Proxy proxy) {
+    public HTTPRequest SetProxy(NetworkProxy proxy) {
         Proxy = proxy;
         return this;
     }
@@ -425,6 +459,21 @@ public class HTTPRequest implements Cloneable {
 
     public HTTPRequest SetFollowRedirect(boolean followRedirect) {
         FollowRedirect = followRedirect;
+        return this;
+    }
+
+    public HTTPRequest SetTimeout(Duration timeout) {
+        Timeout = timeout;
+        return this;
+    }
+
+    public HTTPRequest SetAutoSendCookies(Boolean autoSendCookies) {
+        AutoSendCookies = autoSendCookies;
+        return this;
+    }
+
+    public HTTPRequest SetAutoReceiveCookies(Boolean autoReceiveCookies) {
+        AutoReceiveCookies = autoReceiveCookies;
         return this;
     }
 
@@ -480,6 +529,226 @@ public class HTTPRequest implements Cloneable {
                 throw new AssertionError();
             }
         });
+    }
+
+    public String Serialize() {
+        JSONObject jo = new JSONObject();
+        jo.put("Method", Method == null ? JSONObject.NULL : Method.Name);
+        jo.put("URL", URL == null ? JSONObject.NULL : URL);
+        jo.put("CustomizedHeaderList", CustomizedHeaderList == null ? JSONObject.NULL : CustomizedHeaderList);
+        jo.put("RequestBinary", RequestBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(RequestBinary));
+        jo.put("RequestForm", RequestForm == null ? JSONObject.NULL : RequestForm);
+        jo.put("RequestString", RequestString == null ? JSONObject.NULL : RequestString);
+        jo.put("RequestContentType", RequestContentType == null ? JSONObject.NULL : RequestContentType.Name);
+        jo.put("RequestContentTypeHeader", RequestContentTypeHeader == null ? JSONObject.NULL : RequestContentTypeHeader);
+        jo.put("Timeout", Timeout == null ? JSONObject.NULL : Timeout.toMillis());
+        jo.put("ConnectTimeout", ConnectTimeout == null ? JSONObject.NULL : ConnectTimeout.toMillis());
+        jo.put("ReadTimeout", ReadTimeout == null ? JSONObject.NULL : ReadTimeout.toMillis());
+        jo.put("WriteTimeout", WriteTimeout == null ? JSONObject.NULL : WriteTimeout.toMillis());
+        jo.put("IsQuickTest", IsQuickTest);
+        jo.put("FollowRedirect", FollowRedirect);
+        jo.put("AutoSendCookies", AutoSendCookies == null ? JSONObject.NULL : AutoSendCookies);
+        jo.put("AutoReceiveCookies", AutoReceiveCookies == null ? JSONObject.NULL : AutoReceiveCookies);
+        jo.put("Proxy", Proxy == null ? JSONObject.NULL : new JSONObject() {{
+            put("Type", Proxy.Type == null ? JSONObject.NULL : Proxy.Type.name());
+            put("Host", Proxy.Host == null ? JSONObject.NULL : Proxy.Host);
+            put("Port", Proxy.Port == null ? JSONObject.NULL : Proxy.Port);
+        }});
+        jo.put("StatusCode", StatusCode);
+        jo.put("StatusMessage", StatusMessage == null ? JSONObject.NULL : StatusMessage);
+        jo.put("ResponseHeaderList", ResponseHeaderList == null ? JSONObject.NULL : ResponseHeaderList);
+        jo.put("ResponseHeaderMap", ResponseHeaderMap == null ? JSONObject.NULL : ResponseHeaderMap);
+        jo.put("responseBinary", responseBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(responseBinary));
+        return jo.toString();
+    }
+
+    public void Deserialize(String s) {
+        Object obj = new JSONTokener(s).nextValue();
+        if (!(obj instanceof JSONObject)) {
+            return;
+        }
+        JSONObject jo = (JSONObject) obj;
+        {
+            String key = "Method";
+            if (jo.has(key)) {
+                Method = jo.isNull(key) ? null : jo.getEnum(HTTPMethod.class, key);
+            }
+        }
+        {
+            String key = "URL";
+            if (jo.has(key)) {
+                URL = jo.isNull(key) ? null : jo.getString(key);
+            }
+        }
+        {
+            String key = "CustomizedHeaderList";
+            if (jo.has(key)) {
+                CustomizedHeaderList = jo.isNull(key) ? null : new ArrayList<String[]>() {{
+                    JSONArray ja = jo.getJSONArray(key);
+                    for (int i = 0; i < ja.length(); i++) {
+                        JSONArray kv = ja.getJSONArray(i);
+                        add(new String[]{kv.getString(0), kv.getString(1)});
+                    }
+                }};
+            }
+        }
+        {
+            String key = "RequestBinary";
+            if (jo.has(key)) {
+                RequestBinary = jo.isNull(key) ? null : Base64.getDecoder().decode(jo.getString(key));
+            }
+        }
+        {
+            String key = "RequestForm";
+            if (jo.has(key)) {
+                RequestForm = jo.isNull(key) ? null : new ArrayList<String[]>() {{
+                    JSONArray ja = jo.getJSONArray(key);
+                    for (int i = 0; i < ja.length(); i++) {
+                        JSONArray kv = ja.getJSONArray(i);
+                        add(new String[]{kv.getString(0), kv.getString(1)});
+                    }
+                }};
+            }
+        }
+        {
+            String key = "RequestString";
+            if (jo.has(key)) {
+                RequestString = jo.isNull(key) ? null : jo.getString(key);
+            }
+        }
+        {
+            String key = "RequestContentType";
+            if (jo.has(key)) {
+                RequestContentType = jo.isNull(key) ? null : jo.getEnum(MIMEType.class, key);
+            }
+        }
+        {
+            String key = "RequestContentTypeHeader";
+            if (jo.has(key)) {
+                RequestContentTypeHeader = jo.isNull(key) ? null : jo.getString(key);
+            }
+        }
+        {
+            String key = "Timeout";
+            if (jo.has(key)) {
+                Timeout = jo.isNull(key) ? null : Duration.ofMillis(jo.getLong(key));
+            }
+        }
+        {
+            String key = "ConnectTimeout";
+            if (jo.has(key)) {
+                ConnectTimeout = jo.isNull(key) ? defaultConnectTimeout : Duration.ofMillis(jo.getLong(key));
+            }
+        }
+        {
+            String key = "ReadTimeout";
+            if (jo.has(key)) {
+                ReadTimeout = jo.isNull(key) ? defaultReadTimeout : Duration.ofMillis(jo.getLong(key));
+            }
+        }
+        {
+            String key = "WriteTimeout";
+            if (jo.has(key)) {
+                WriteTimeout = jo.isNull(key) ? defaultWriteTimeout : Duration.ofMillis(jo.getLong(key));
+            }
+        }
+        {
+            String key = "IsQuickTest";
+            if (jo.has(key)) {
+                IsQuickTest = jo.isNull(key) ? defaultIsQuickTest : jo.getBoolean(key);
+            }
+        }
+        {
+            String key = "FollowRedirect";
+            if (jo.has(key)) {
+                FollowRedirect = jo.isNull(key) ? defaultFollowRedirect : jo.getBoolean(key);
+            }
+        }
+        {
+            String key = "AutoSendCookies";
+            if (jo.has(key)) {
+                AutoSendCookies = jo.isNull(key) ? null : jo.getBoolean(key);
+            }
+        }
+        {
+            String key = "AutoReceiveCookies";
+            if (jo.has(key)) {
+                AutoReceiveCookies = jo.isNull(key) ? null : jo.getBoolean(key);
+            }
+        }
+        {
+            String key = "Proxy";
+            if (jo.has(key)) {
+                Proxy = jo.isNull(key) ? null : new NetworkProxy() {{
+                    JSONObject proxy = jo.getJSONObject(key);
+                    {
+                        String key = "Type";
+                        if (proxy.has(key)) {
+                            Type = proxy.isNull(key) ? null : proxy.getEnum(java.net.Proxy.Type.class, key);
+                        }
+                    }
+                    {
+                        String key = "Host";
+                        if (proxy.has(key)) {
+                            Host = proxy.isNull(key) ? null : proxy.getString(key);
+                        }
+                    }
+                    {
+                        String key = "Port";
+                        if (proxy.has(key)) {
+                            Port = proxy.isNull(key) ? null : proxy.getInt(key);
+                        }
+                    }
+                }};
+            }
+        }
+        {
+            String key = "StatusCode";
+            if (jo.has(key)) {
+                StatusCode = jo.isNull(key) ? defaultStatusCode : jo.getInt(key);
+            }
+        }
+        {
+            String key = "StatusMessage";
+            if (jo.has(key)) {
+                StatusMessage = jo.isNull(key) ? null : jo.getString(key);
+            }
+        }
+        {
+            String key = "ResponseHeaderList";
+            if (jo.has(key)) {
+                ResponseHeaderList = jo.isNull(key) ? null : new ArrayList<String[]>() {{
+                    JSONArray ja = jo.getJSONArray(key);
+                    for (int i = 0; i < ja.length(); i++) {
+                        JSONArray kv = ja.getJSONArray(i);
+                        add(new String[]{kv.getString(0), kv.getString(1)});
+                    }
+                }};
+            }
+        }
+        {
+            String key = "ResponseHeaderMap";
+            if (jo.has(key)) {
+                ResponseHeaderMap = jo.isNull(key) ? null : new HashMap<String, List<String>>() {{
+                    JSONArray kvs = jo.getJSONArray(key);
+                    for (int i = 0; i < kvs.length(); i++) {
+                        JSONArray kv = kvs.getJSONArray(i);
+                        put(kv.getString(0), new ArrayList<String>() {{
+                            JSONArray vs = kv.getJSONArray(1);
+                            for (int j = 0; j < vs.length(); j++) {
+                                add(vs.getString(j));
+                            }
+                        }});
+                    }
+                }};
+            }
+        }
+        {
+            String key = "responseBinary";
+            if (jo.has(key)) {
+                responseBinary = jo.isNull(key) ? null : Base64.getDecoder().decode(jo.getString(key));
+            }
+        }
     }
 
     <R> R trigger(Callable<R> op) {

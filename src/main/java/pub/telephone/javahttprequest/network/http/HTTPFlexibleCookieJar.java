@@ -8,4 +8,12 @@ public interface HTTPFlexibleCookieJar extends CookieJar {
     HTTPFlexibleCookieJar AsWriteOnlyJar();
 
     HTTPFlexibleCookieJar AsReadWriteJar();
+
+    HTTPFlexibleCookieJar AsNoJar();
+
+    HTTPFlexibleCookieJar WithRead(boolean readable);
+
+    HTTPFlexibleCookieJar WithWrite(boolean writable);
+
+    HTTPFlexibleCookieJar WithReadWrite(boolean readable, boolean writable);
 }

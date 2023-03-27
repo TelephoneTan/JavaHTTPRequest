@@ -1,5 +1,6 @@
 import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
+import pub.telephone.javahttprequest.network.NetworkProxy;
 import pub.telephone.javahttprequest.network.http.HTTPCookieJar;
 import pub.telephone.javahttprequest.network.http.HTTPRequest;
 import pub.telephone.javahttprequest.network.http.HTTPResult;
@@ -10,7 +11,6 @@ import pub.telephone.javapromise.async.promise.PromiseRejectedListener;
 import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 
 import java.io.File;
-import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -21,11 +21,22 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testSemaphore();
+        testGet();
+//        testSemaphore();
 //        testCookieJarAndHTML();
 //        testPost();
 //        testGBKString();
 //        testGBKHTML();
+    }
+
+    void testGet() {
+        HTTPRequest request = new HTTPRequest("https://google.com");
+        request.SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7890));
+        request.Deserialize(request.Serialize());
+        request.String().Then(strRes -> {
+            System.out.println(strRes.Result);
+            return null;
+        }).Await();
     }
 
     void testSemaphore() {
@@ -94,7 +105,7 @@ public class TestHTTP {
 
     void testCookieJarAndHTML() {
         HTTPRequest request = new HTTPRequest("https://v.guet.edu.cn")
-                .SetProxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7890)));
+                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "127.0.0.1", 7890));
         PromiseFulfilledListener<HTTPResult<Document>, Object> then = documentResult -> {
             System.out.println(documentResult.Result.toString());
             return documentResult.Request.Send()
