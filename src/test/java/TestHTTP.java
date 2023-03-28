@@ -2,6 +2,7 @@ import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
 import pub.telephone.javahttprequest.network.NetworkProxy;
 import pub.telephone.javahttprequest.network.http.HTTPCookieJar;
+import pub.telephone.javahttprequest.network.http.HTTPMethod;
 import pub.telephone.javahttprequest.network.http.HTTPRequest;
 import pub.telephone.javahttprequest.network.http.HTTPResult;
 import pub.telephone.javapromise.async.Async;
@@ -21,12 +22,34 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testGet();
+        testSerialize();
+//        testGet();
 //        testSemaphore();
 //        testCookieJarAndHTML();
 //        testPost();
 //        testGBKString();
 //        testGBKHTML();
+    }
+
+    void testSerialize() {
+        HTTPRequest request = new HTTPRequest(HTTPMethod.POST, "https://google.com");
+        request
+                .SetProxy(new NetworkProxy(Proxy.Type.SOCKS, "localhost", 7890))
+                .SetRequestForm(new ArrayList<String[]>() {{
+                    add(new String[]{"xx", "yy"});
+                    add(new String[]{"aa", "bb"});
+                }})
+                .SetCustomizedHeaderList(new ArrayList<String[]>() {{
+                    add(new String[]{"with", "me"});
+                    add(new String[]{"and", "you"});
+                }})
+                .Deserialize(request.Serialize())
+                .String()
+                .Then(strRes -> {
+                    System.out.println(strRes.Request.Deserialize(strRes.Request.Serialize()).Serialize());
+                    return null;
+                })
+                .Await();
     }
 
     void testGet() {

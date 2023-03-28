@@ -149,6 +149,48 @@ public class HTTPRequest implements Cloneable {
         return new HTTPRequest(url).SetMethod(HTTPMethod.POST);
     }
 
+    static Object serializeHeaderList(List<String[]> headerList) {
+        return headerList == null ? JSONObject.NULL : new JSONArray() {{
+            for (String[] kv : headerList) {
+                if (kv == null) {
+                    put(JSONObject.NULL);
+                    continue;
+                }
+                put(new JSONArray() {{
+                    if (kv.length > 0) {
+                        String k = kv[0];
+                        put(k == null ? JSONObject.NULL : k);
+                        if (kv.length > 1) {
+                            String v = kv[1];
+                            put(v == null ? JSONObject.NULL : v);
+                        }
+                    }
+                }});
+            }
+        }};
+    }
+
+    static List<String[]> deserializeHeaderList(JSONObject jo, String key) {
+        return jo.isNull(key) ? null : new ArrayList<String[]>() {{
+            JSONArray ja = jo.getJSONArray(key);
+            for (int i = 0; i < ja.length(); i++) {
+                if (ja.isNull(i)) {
+                    add(null);
+                    continue;
+                }
+                JSONArray kv = ja.getJSONArray(i);
+                add(new ArrayList<String>() {{
+                    if (kv.length() > 0) {
+                        add(kv.isNull(0) ? null : kv.getString(0));
+                        if (kv.length() > 1) {
+                            add(kv.isNull(1) ? null : kv.getString(1));
+                        }
+                    }
+                }}.toArray(new String[0]));
+            }
+        }};
+    }
+
     /**
      * 之所以要将一些初始化步骤放到 init 方法中是因为 clone 方法需要调用 init 方法完成克隆。
      */
@@ -547,13 +589,13 @@ public class HTTPRequest implements Cloneable {
 
     public String Serialize() {
         JSONObject jo = new JSONObject();
-        jo.put("Method", Method == null ? JSONObject.NULL : Method.Name);
+        jo.put("Method", Method == null ? JSONObject.NULL : Method.name());
         jo.put("URL", URL == null ? JSONObject.NULL : URL);
-        jo.put("CustomizedHeaderList", CustomizedHeaderList == null ? JSONObject.NULL : CustomizedHeaderList);
+        jo.put("CustomizedHeaderList", serializeHeaderList(CustomizedHeaderList));
         jo.put("RequestBinary", RequestBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(RequestBinary));
-        jo.put("RequestForm", RequestForm == null ? JSONObject.NULL : RequestForm);
+        jo.put("RequestForm", serializeHeaderList(RequestForm));
         jo.put("RequestString", RequestString == null ? JSONObject.NULL : RequestString);
-        jo.put("RequestContentType", RequestContentType == null ? JSONObject.NULL : RequestContentType.Name);
+        jo.put("RequestContentType", RequestContentType == null ? JSONObject.NULL : RequestContentType.name());
         jo.put("RequestContentTypeHeader", RequestContentTypeHeader == null ? JSONObject.NULL : RequestContentTypeHeader);
         jo.put("Timeout", Timeout == null ? JSONObject.NULL : Timeout.toMillis());
         jo.put("ConnectTimeout", ConnectTimeout == null ? JSONObject.NULL : ConnectTimeout.toMillis());
@@ -570,8 +612,20 @@ public class HTTPRequest implements Cloneable {
         }});
         jo.put("StatusCode", StatusCode);
         jo.put("StatusMessage", StatusMessage == null ? JSONObject.NULL : StatusMessage);
-        jo.put("ResponseHeaderList", ResponseHeaderList == null ? JSONObject.NULL : ResponseHeaderList);
-        jo.put("ResponseHeaderMap", ResponseHeaderMap == null ? JSONObject.NULL : ResponseHeaderMap);
+        jo.put("ResponseHeaderList", serializeHeaderList(ResponseHeaderList));
+        jo.put("ResponseHeaderMap", ResponseHeaderMap == null ? JSONObject.NULL : new JSONArray() {{
+            for (String k : ResponseHeaderMap.keySet()) {
+                List<String> v = ResponseHeaderMap.get(k);
+                put(new JSONArray() {{
+                    put(k == null ? JSONObject.NULL : k);
+                    put(v == null ? JSONObject.NULL : new JSONArray() {{
+                        for (String ve : v) {
+                            put(ve == null ? JSONObject.NULL : ve);
+                        }
+                    }});
+                }});
+            }
+        }});
         jo.put("responseBinary", responseBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(responseBinary));
         return jo.toString();
     }
@@ -597,13 +651,7 @@ public class HTTPRequest implements Cloneable {
         {
             String key = "CustomizedHeaderList";
             if (jo.has(key)) {
-                CustomizedHeaderList = jo.isNull(key) ? null : new ArrayList<String[]>() {{
-                    JSONArray ja = jo.getJSONArray(key);
-                    for (int i = 0; i < ja.length(); i++) {
-                        JSONArray kv = ja.getJSONArray(i);
-                        add(new String[]{kv.getString(0), kv.getString(1)});
-                    }
-                }};
+                CustomizedHeaderList = deserializeHeaderList(jo, key);
             }
         }
         {
@@ -615,13 +663,7 @@ public class HTTPRequest implements Cloneable {
         {
             String key = "RequestForm";
             if (jo.has(key)) {
-                RequestForm = jo.isNull(key) ? null : new ArrayList<String[]>() {{
-                    JSONArray ja = jo.getJSONArray(key);
-                    for (int i = 0; i < ja.length(); i++) {
-                        JSONArray kv = ja.getJSONArray(i);
-                        add(new String[]{kv.getString(0), kv.getString(1)});
-                    }
-                }};
+                RequestForm = deserializeHeaderList(jo, key);
             }
         }
         {
@@ -731,13 +773,7 @@ public class HTTPRequest implements Cloneable {
         {
             String key = "ResponseHeaderList";
             if (jo.has(key)) {
-                ResponseHeaderList = jo.isNull(key) ? null : new ArrayList<String[]>() {{
-                    JSONArray ja = jo.getJSONArray(key);
-                    for (int i = 0; i < ja.length(); i++) {
-                        JSONArray kv = ja.getJSONArray(i);
-                        add(new String[]{kv.getString(0), kv.getString(1)});
-                    }
-                }};
+                ResponseHeaderList = deserializeHeaderList(jo, key);
             }
         }
         {
@@ -746,13 +782,22 @@ public class HTTPRequest implements Cloneable {
                 ResponseHeaderMap = jo.isNull(key) ? null : new HashMap<String, List<String>>() {{
                     JSONArray kvs = jo.getJSONArray(key);
                     for (int i = 0; i < kvs.length(); i++) {
+                        if (kvs.isNull(i)) {
+                            continue;
+                        }
                         JSONArray kv = kvs.getJSONArray(i);
-                        put(kv.getString(0), new ArrayList<String>() {{
-                            JSONArray vs = kv.getJSONArray(1);
-                            for (int j = 0; j < vs.length(); j++) {
-                                add(vs.getString(j));
-                            }
-                        }});
+                        if (kv.length() < 2) {
+                            continue;
+                        }
+                        put(
+                                kv.isNull(0) ? null : kv.getString(0),
+                                kv.isNull(1) ? null : new ArrayList<String>() {{
+                                    JSONArray vs = kv.getJSONArray(1);
+                                    for (int j = 0; j < vs.length(); j++) {
+                                        add(vs.isNull(j) ? null : vs.getString(j));
+                                    }
+                                }}
+                        );
                     }
                 }};
             }
