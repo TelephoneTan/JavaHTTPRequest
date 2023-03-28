@@ -5,7 +5,7 @@ public enum MIMEType {
     ImagePNG("image/png"),
     ApplicationJSON("application/json"),
     XWWWFormURLEncoded("application/x-www-form-urlencoded"),
-    TextPlainUTF8("text/html;charset=utf-8"),
+    TextPlainUTF8("text/plain;charset=utf-8"),
     ApplicationOctetStream("application/octet-stream");
 
     public final String Name;
