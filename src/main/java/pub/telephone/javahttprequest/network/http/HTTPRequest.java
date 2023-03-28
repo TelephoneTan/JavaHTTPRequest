@@ -87,6 +87,20 @@ public class HTTPRequest implements Cloneable {
     Response response;
     //------------------------------------------------
 
+    public HTTPRequest(HTTPMethod method, String url, PromiseSemaphore requestSemaphore) {
+        this.RequestSemaphore = requestSemaphore;
+        this.Method = method;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(HTTPMethod method, String url) {
+        this.RequestSemaphore = null;
+        this.Method = method;
+        this.URL = url;
+        init();
+    }
+
     public HTTPRequest(String url, PromiseSemaphore requestSemaphore) {
         this.RequestSemaphore = requestSemaphore;
         this.URL = url;
