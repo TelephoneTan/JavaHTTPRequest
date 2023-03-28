@@ -33,8 +33,13 @@ public class TestHTTP {
         HTTPRequest request = new HTTPRequest("https://google.com")
                 .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7890));
         request.Deserialize(request.Serialize())
-                .String().Then(strRes -> {
+                .String()
+                .Then(strRes -> {
                     System.out.println(strRes.Result);
+                    return null;
+                })
+                .Catch(throwable -> {
+                    throwable.printStackTrace();
                     return null;
                 }).Await();
     }

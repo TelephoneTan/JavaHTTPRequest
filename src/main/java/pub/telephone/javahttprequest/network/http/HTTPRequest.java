@@ -585,7 +585,7 @@ public class HTTPRequest implements Cloneable {
         {
             String key = "Method";
             if (jo.has(key)) {
-                Method = jo.isNull(key) ? null : jo.getEnum(HTTPMethod.class, key);
+                Method = jo.isNull(key) ? null : HTTPMethod.valueOf(jo.getString(key));
             }
         }
         {
@@ -633,7 +633,7 @@ public class HTTPRequest implements Cloneable {
         {
             String key = "RequestContentType";
             if (jo.has(key)) {
-                RequestContentType = jo.isNull(key) ? null : jo.getEnum(MIMEType.class, key);
+                RequestContentType = jo.isNull(key) ? null : MIMEType.valueOf(jo.getString(key));
             }
         }
         {
@@ -698,7 +698,7 @@ public class HTTPRequest implements Cloneable {
                     {
                         String key = "Type";
                         if (proxy.has(key)) {
-                            Type = proxy.isNull(key) ? null : proxy.getEnum(java.net.Proxy.Type.class, key);
+                            Type = proxy.isNull(key) ? null : java.net.Proxy.Type.valueOf(proxy.getString(key));
                         }
                     }
                     {
