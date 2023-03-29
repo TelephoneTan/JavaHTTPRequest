@@ -262,7 +262,20 @@ public class HTTPRequest implements Cloneable {
                 );
             }
             //
-            requestBuilder.method(Method == null ? HTTPMethod.GET.Name : Method.Name, RequestBody);
+            if (Method == null) {
+                Method = HTTPMethod.GET;
+            }
+            //
+            switch (Method) {
+                case PUT:
+                case POST:
+                case PATCH:
+                    if (RequestBody == null) {
+                        RequestBody = okhttp3.RequestBody.create(new byte[0]);
+                    }
+            }
+            //
+            requestBuilder.method(Method.Name, RequestBody);
             //
             if (CustomizedHeaderList != null) {
                 for (String[] kv : CustomizedHeaderList) {

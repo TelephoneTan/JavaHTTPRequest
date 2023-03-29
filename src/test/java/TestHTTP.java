@@ -49,6 +49,10 @@ public class TestHTTP {
                     System.out.println(strRes.Request.Deserialize(strRes.Request.Serialize()).Serialize());
                     return null;
                 })
+                .Catch(throwable -> {
+                    throwable.printStackTrace();
+                    return null;
+                })
                 .Await();
     }
 
