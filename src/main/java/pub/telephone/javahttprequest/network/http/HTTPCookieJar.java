@@ -3,6 +3,7 @@ package pub.telephone.javahttprequest.network.http;
 import okhttp3.Cookie;
 import okhttp3.HttpUrl;
 import org.jetbrains.annotations.NotNull;
+import pub.telephone.javahttprequest.util.Util;
 
 import java.util.*;
 
@@ -10,27 +11,17 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
     final Map<cookieKey, Cookie> map;
     final boolean readable;
     final boolean writable;
+    final List<Map.Entry<String, String>> customCookieList;
 
-    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable) {
+    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable, List<Map.Entry<String, String>> customCookieList) {
         this.map = jar == null ? new HashMap<>() : jar.map;
         this.readable = readable == null || readable;
         this.writable = writable == null || writable;
-    }
-
-    public HTTPCookieJar(HTTPCookieJar jar, boolean readable, boolean writable) {
-        this(jar, (Boolean) readable, (Boolean) writable);
-    }
-
-    public HTTPCookieJar(boolean readable, boolean writable) {
-        this(null, (Boolean) readable, (Boolean) writable);
-    }
-
-    public HTTPCookieJar(HTTPCookieJar jar) {
-        this(jar, null, null);
+        this.customCookieList = customCookieList;
     }
 
     public HTTPCookieJar() {
-        this(null, null, null);
+        this(null, null, null, null);
     }
 
     @NotNull
@@ -52,6 +43,17 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
                     matchList.add(cookie);
                 }
             }
+            if (customCookieList != null) {
+                for (Map.Entry<String, String> cc : customCookieList) {
+                    HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(cc.getKey()));
+                    if (u != null) {
+                        Cookie c = Cookie.parse(u, Util.GetEmptyStringFromNull(cc.getValue()));
+                        if (c != null) {
+                            matchList.add(c);
+                        }
+                    }
+                }
+            }
             matchList.sort((o1, o2) -> o2.path().length() - o1.path().length());
             return matchList;
         }
@@ -71,43 +73,50 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
         }
     }
 
-    HTTPCookieJar require(boolean r, boolean w) {
-        return r == this.readable && w == this.writable ? this : new HTTPCookieJar(this, r, w);
+    HTTPCookieJar require(boolean r, boolean w, List<Map.Entry<String, String>> customCookieList) {
+        return r == this.readable && w == this.writable && customCookieList == this.customCookieList ?
+                this :
+                new HTTPCookieJar(this, r, w, customCookieList);
     }
 
     @Override
     public HTTPCookieJar AsReadOnlyJar() {
-        return require(true, false);
+        return require(true, false, customCookieList);
     }
 
     @Override
     public HTTPCookieJar AsWriteOnlyJar() {
-        return require(false, true);
+        return require(false, true, customCookieList);
     }
 
     @Override
     public HTTPCookieJar AsReadWriteJar() {
-        return require(true, true);
+        return require(true, true, customCookieList);
     }
 
     @Override
     public HTTPFlexibleCookieJar AsNoJar() {
-        return require(false, false);
+        return require(false, false, customCookieList);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithRead(boolean readable) {
-        return require(readable, writable);
+        return require(readable, writable, customCookieList);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithWrite(boolean writable) {
-        return require(readable, writable);
+        return require(readable, writable, customCookieList);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithReadWrite(boolean readable, boolean writable) {
-        return require(readable, writable);
+        return require(readable, writable, customCookieList);
+    }
+
+    @Override
+    public HTTPFlexibleCookieJar WithCustomRequestCookies(List<Map.Entry<String, String>> urlSetCookieList) {
+        return require(readable, writable, urlSetCookieList);
     }
 
     static class cookieKey {
