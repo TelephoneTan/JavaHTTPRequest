@@ -344,7 +344,14 @@ public class HTTPRequest implements Cloneable {
                     //
                     Headers headers = response.headers();
                     Map<String, List<String>> multimap = headers.toMultimap();
-                    ResponseHeaderMap = new HashMap<>(multimap);
+                    ResponseHeaderMap = new HashMap<>();
+                    for (String key : multimap.keySet()) {
+                        List<String> value = multimap.get(key);
+                        if (key != null) {
+                            key = key.toLowerCase();
+                        }
+                        ResponseHeaderMap.put(key, value);
+                    }
                     //
                     ResponseHeaderList = new ArrayList<>();
                     if (!ResponseHeaderMap.isEmpty()) {
@@ -419,6 +426,10 @@ public class HTTPRequest implements Cloneable {
 
     public HTTPRequest ToPost(String url) {
         return SetMethod(HTTPMethod.POST).SetURL(url);
+    }
+
+    public List<String> GetHeader(String name) {
+        return ResponseHeaderMap.get(name.toLowerCase());
     }
 
     public HTTPRequest SetURL(String url) {
