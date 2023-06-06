@@ -15,6 +15,7 @@ import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 import pub.telephone.javapromise.async.task.once.OnceTask;
 
 import java.io.*;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -314,6 +315,8 @@ public class HTTPRequest implements Cloneable {
             //
             if (Proxy != null) {
                 clientBuilder.proxy(Proxy.Proxy());
+            } else {
+                clientBuilder.proxySelector(ProxySelector.getDefault());
             }
             //
             if (cancelled.await(0, TimeUnit.SECONDS)) {
