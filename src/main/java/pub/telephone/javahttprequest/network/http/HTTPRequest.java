@@ -14,15 +14,11 @@ import pub.telephone.javapromise.async.promise.Promise;
 import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 import pub.telephone.javapromise.async.task.once.OnceTask;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.*;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -318,27 +314,6 @@ public class HTTPRequest implements Cloneable {
             //
             if (Proxy != null) {
                 clientBuilder.proxy(Proxy.Proxy());
-                //
-                TrustManager[] trustAllCerts = new TrustManager[]{
-                        new X509TrustManager() {
-                            @Override
-                            public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                            }
-
-                            @Override
-                            public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                            }
-
-                            @Override
-                            public X509Certificate[] getAcceptedIssuers() {
-                                return new X509Certificate[]{};
-                            }
-                        }
-                };
-                SSLContext sslContext = SSLContext.getInstance("SSL");
-                sslContext.init(null, trustAllCerts, null);
-                clientBuilder.sslSocketFactory(sslContext.getSocketFactory(), (X509TrustManager) trustAllCerts[0]);
-                clientBuilder.hostnameVerifier((hostname, session) -> true);
             }
             //
             if (cancelled.await(0, TimeUnit.SECONDS)) {

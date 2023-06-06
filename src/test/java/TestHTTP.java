@@ -22,13 +22,38 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testSerialize();
+        testProxy();
+//        testSerialize();
 //        testGet();
 //        testSemaphore();
 //        testCookieJarAndHTML();
 //        testPost();
 //        testGBKString();
 //        testGBKHTML();
+    }
+
+    void testProxy() {
+        HTTPRequest request = new HTTPRequest(HTTPMethod.POST, "https://www.baidu.com");
+        request
+                .SetProxy(new NetworkProxy(Proxy.Type.SOCKS, "localhost", 7893))
+                .SetRequestForm(new ArrayList<String[]>() {{
+                    add(new String[]{"xxx", "yy"});
+                    add(new String[]{"aaa", "bb"});
+                }})
+                .SetCustomizedHeaderList(new ArrayList<String[]>() {{
+                    add(new String[]{"with", "me"});
+                    add(new String[]{"and", "you!"});
+                }})
+                .String()
+                .Then(strRes -> {
+                    System.out.println(strRes.Result);
+                    return null;
+                })
+                .Catch(throwable -> {
+                    throwable.printStackTrace();
+                    return null;
+                })
+                .Await();
     }
 
     void testSerialize() {
@@ -41,7 +66,7 @@ public class TestHTTP {
                 }})
                 .SetCustomizedHeaderList(new ArrayList<String[]>() {{
                     add(new String[]{"with", "me"});
-                    add(new String[]{"and", "you"});
+                    add(new String[]{"and", "you!"});
                 }})
                 .Deserialize(request.Serialize())
                 .String()
