@@ -11,9 +11,9 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
     final Map<cookieKey, Cookie> map;
     final boolean readable;
     final boolean writable;
-    final List<Map.Entry<String, String>> customCookieList;
+    final List<String[]> customCookieList;
 
-    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable, List<Map.Entry<String, String>> customCookieList) {
+    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable, List<String[]> customCookieList) {
         this.map = jar == null ? new HashMap<>() : jar.map;
         this.readable = readable == null || readable;
         this.writable = writable == null || writable;
@@ -44,10 +44,18 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
                 }
             }
             if (customCookieList != null) {
-                for (Map.Entry<String, String> cc : customCookieList) {
-                    HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(cc.getKey()));
+                for (String[] cc : customCookieList) {
+                    String k = null;
+                    String v = null;
+                    if (cc != null && cc.length > 0) {
+                        k = cc[0];
+                        if (cc.length > 1) {
+                            v = cc[1];
+                        }
+                    }
+                    HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(k));
                     if (u != null) {
-                        Cookie c = Cookie.parse(u, Util.GetEmptyStringFromNull(cc.getValue()));
+                        Cookie c = Cookie.parse(u, Util.GetEmptyStringFromNull(v));
                         if (c != null) {
                             matchList.add(c);
                         }
@@ -73,7 +81,7 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
         }
     }
 
-    HTTPCookieJar require(boolean r, boolean w, List<Map.Entry<String, String>> customCookieList) {
+    HTTPCookieJar require(boolean r, boolean w, List<String[]> customCookieList) {
         return r == this.readable && w == this.writable && customCookieList == this.customCookieList ?
                 this :
                 new HTTPCookieJar(this, r, w, customCookieList);
@@ -115,7 +123,7 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
     }
 
     @Override
-    public HTTPFlexibleCookieJar WithCustomRequestCookies(List<Map.Entry<String, String>> urlSetCookieList) {
+    public HTTPFlexibleCookieJar WithCustomRequestCookies(List<String[]> urlSetCookieList) {
         return require(readable, writable, urlSetCookieList);
     }
 
