@@ -2,8 +2,6 @@ package pub.telephone.javahttprequest.network.http;
 
 import okhttp3.CookieJar;
 
-import java.util.List;
-
 public interface HTTPFlexibleCookieJar extends CookieJar {
     HTTPFlexibleCookieJar AsReadOnlyJar();
 
@@ -19,5 +17,5 @@ public interface HTTPFlexibleCookieJar extends CookieJar {
 
     HTTPFlexibleCookieJar WithReadWrite(boolean readable, boolean writable);
 
-    HTTPFlexibleCookieJar WithCustomRequestCookies(List<String[]> urlSetCookieList);
+    void SetCookies(String[][] urlCookieList);
 }

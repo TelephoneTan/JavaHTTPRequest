@@ -11,17 +11,15 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
     final Map<cookieKey, Cookie> map;
     final boolean readable;
     final boolean writable;
-    final List<String[]> customCookieList;
 
-    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable, List<String[]> customCookieList) {
+    HTTPCookieJar(HTTPCookieJar jar, Boolean readable, Boolean writable) {
         this.map = jar == null ? new HashMap<>() : jar.map;
         this.readable = readable == null || readable;
         this.writable = writable == null || writable;
-        this.customCookieList = customCookieList;
     }
 
     public HTTPCookieJar() {
-        this(null, null, null, null);
+        this(null, null, null);
     }
 
     @NotNull
@@ -43,25 +41,6 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
                     matchList.add(cookie);
                 }
             }
-            if (customCookieList != null) {
-                for (String[] cc : customCookieList) {
-                    String k = null;
-                    String v = null;
-                    if (cc != null && cc.length > 0) {
-                        k = cc[0];
-                        if (cc.length > 1) {
-                            v = cc[1];
-                        }
-                    }
-                    HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(k));
-                    if (u != null) {
-                        Cookie c = Cookie.parse(u, Util.GetEmptyStringFromNull(v));
-                        if (c != null) {
-                            matchList.add(c);
-                        }
-                    }
-                }
-            }
             matchList.sort((o1, o2) -> o2.path().length() - o1.path().length());
             return matchList;
         }
@@ -81,50 +60,79 @@ public class HTTPCookieJar implements HTTPFlexibleCookieJar {
         }
     }
 
-    HTTPCookieJar require(boolean r, boolean w, List<String[]> customCookieList) {
-        return r == this.readable && w == this.writable && customCookieList == this.customCookieList ?
+    HTTPCookieJar require(boolean r, boolean w) {
+        return r == this.readable && w == this.writable ?
                 this :
-                new HTTPCookieJar(this, r, w, customCookieList);
+                new HTTPCookieJar(this, r, w);
     }
 
     @Override
     public HTTPCookieJar AsReadOnlyJar() {
-        return require(true, false, customCookieList);
+        return require(true, false);
     }
 
     @Override
     public HTTPCookieJar AsWriteOnlyJar() {
-        return require(false, true, customCookieList);
+        return require(false, true);
     }
 
     @Override
     public HTTPCookieJar AsReadWriteJar() {
-        return require(true, true, customCookieList);
+        return require(true, true);
     }
 
     @Override
     public HTTPFlexibleCookieJar AsNoJar() {
-        return require(false, false, customCookieList);
+        return require(false, false);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithRead(boolean readable) {
-        return require(readable, writable, customCookieList);
+        return require(readable, writable);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithWrite(boolean writable) {
-        return require(readable, writable, customCookieList);
+        return require(readable, writable);
     }
 
     @Override
     public HTTPFlexibleCookieJar WithReadWrite(boolean readable, boolean writable) {
-        return require(readable, writable, customCookieList);
+        return require(readable, writable);
     }
 
     @Override
-    public HTTPFlexibleCookieJar WithCustomRequestCookies(List<String[]> urlSetCookieList) {
-        return require(readable, writable, urlSetCookieList);
+    public void SetCookies(String[][] urlCookieList) {
+        if (urlCookieList == null) {
+            return;
+        }
+        Map<String, List<Cookie>> toSet = new HashMap<>();
+        for (String[] urlCookie : urlCookieList) {
+            String url = null;
+            String cookie = null;
+            if (urlCookie != null && urlCookie.length > 0) {
+                url = urlCookie[0];
+                if (urlCookie.length > 1) {
+                    cookie = urlCookie[1];
+                }
+            }
+            HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(url));
+            if (u != null) {
+                Cookie c = Cookie.parse(u, Util.GetEmptyStringFromNull(cookie));
+                if (c != null) {
+                    if (!toSet.containsKey(url)) {
+                        toSet.put(url, new ArrayList<>());
+                    }
+                    toSet.get(url).add(c);
+                }
+            }
+        }
+        for (String url : toSet.keySet()) {
+            HttpUrl u = HttpUrl.parse(Util.GetEmptyStringFromNull(url));
+            if (u != null) {
+                saveFromResponse(u, toSet.get(url));
+            }
+        }
     }
 
     static class cookieKey {
