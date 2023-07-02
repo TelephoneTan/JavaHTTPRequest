@@ -371,7 +371,15 @@ public class HTTPRequest implements Cloneable {
                     resolver.Resolve(result(HTTPRequest.this));
                 }
             });
-            this.call.set(call);
+            this.call.updateAndGet(prev -> {
+                try {
+                    if (cancelled.await(0, TimeUnit.SECONDS)) {
+                        call.cancel();
+                    }
+                } catch (InterruptedException ignored) {
+                }
+                return call;
+            });
         }, RequestSemaphore);
         stream = new OnceTask<>((resolver, rejector) ->
                 resolver.Resolve(send.Do().Then(value -> {
@@ -830,12 +838,13 @@ public class HTTPRequest implements Cloneable {
     public void Cancel() {
         afterInit(() -> {
             send.Cancel();
-            Call call = this.call.get();
-            if (call == null) {
+            this.call.updateAndGet(prev -> {
                 cancelled.countDown();
-            } else {
-                call.cancel();
-            }
+                if (prev != null) {
+                    prev.cancel();
+                }
+                return prev;
+            });
         });
     }
 

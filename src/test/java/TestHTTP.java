@@ -10,6 +10,7 @@ import pub.telephone.javapromise.async.promise.Promise;
 import pub.telephone.javapromise.async.promise.PromiseFulfilledListener;
 import pub.telephone.javapromise.async.promise.PromiseRejectedListener;
 import pub.telephone.javapromise.async.promise.PromiseSemaphore;
+import pub.telephone.javapromise.async.task.timed.TimedTask;
 
 import java.io.File;
 import java.net.Proxy;
@@ -17,12 +18,14 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class TestHTTP {
     @Test
     void test() {
-        testProxy();
+        testCancel();
+//        testProxy();
 //        testSerialize();
 //        testGet();
 //        testSemaphore();
@@ -30,6 +33,26 @@ public class TestHTTP {
 //        testPost();
 //        testGBKString();
 //        testGBKHTML();
+    }
+
+    void testCancel() {
+        HTTPRequest req = new HTTPRequest(HTTPMethod.GET, "long request url here")
+                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7892))
+                .SetCustomizedHeaderList(Arrays.asList(
+                        new String[]{"***", "***"},
+                        new String[]{"***", "***"}
+                ));
+        req.String()
+                .ForCancel(() -> System.out.println("外部已取消"))
+                .Finally(() -> {
+                    System.out.println("请求已结束");
+                    return null;
+                });
+        new TimedTask(Duration.ZERO, (resolver, rejector) -> {
+            req.Cancel();
+            resolver.Resolve(false);
+        }).Start(Duration.ofSeconds(5));
+        Async.Delay(Duration.ofSeconds(25)).Await();
     }
 
     void testProxy() {
