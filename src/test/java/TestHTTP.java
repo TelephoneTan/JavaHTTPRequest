@@ -24,8 +24,8 @@ import java.util.List;
 public class TestHTTP {
     @Test
     void test() {
-        testCancel();
-//        testProxy();
+//        testCancel();
+        testProxy();
 //        testSerialize();
 //        testGet();
 //        testSemaphore();
@@ -58,7 +58,7 @@ public class TestHTTP {
     void testProxy() {
         HTTPRequest request = new HTTPRequest(HTTPMethod.POST, "https://www.baidu.com");
         request
-                .SetProxy(new NetworkProxy(Proxy.Type.SOCKS, "localhost", 7893))
+                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7892))
                 .SetRequestForm(new ArrayList<String[]>() {{
                     add(new String[]{"xxx", "yy"});
                     add(new String[]{"aaa", "bb"});
