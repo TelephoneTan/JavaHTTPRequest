@@ -13,7 +13,10 @@ import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 import pub.telephone.javapromise.async.task.timed.TimedTask;
 
 import java.io.File;
+import java.net.IDN;
 import java.net.Proxy;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.time.Duration;
@@ -23,11 +26,11 @@ import java.util.List;
 
 public class TestHTTP {
     @Test
-    void test() {
+    void test() throws URISyntaxException {
 //        testCancel();
-        testProxy();
+//        testProxy();
 //        testSerialize();
-//        testGet();
+        testGet();
 //        testSemaphore();
 //        testCookieJarAndHTML();
 //        testPost();
@@ -104,9 +107,11 @@ public class TestHTTP {
                 .Await();
     }
 
-    void testGet() {
-        HTTPRequest request = new HTTPRequest("https://google.com")
-                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "localhost", 7890));
+    void testGet() throws URISyntaxException {
+        HTTPRequest request = new HTTPRequest()
+                .SetMethod(HTTPMethod.GET)
+                .SetURI(new URI("http", IDN.toASCII("腾讯。中国"), null, "%20  你 好=1+2/+\\3+世界\\/?", null))
+                .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "172.28.64.1", 7892));
         request.Deserialize(request.Serialize())
                 .String()
                 .Then(strRes -> {

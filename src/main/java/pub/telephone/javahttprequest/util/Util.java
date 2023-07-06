@@ -59,6 +59,10 @@ public class Util {
         return s == null || s.isEmpty();
     }
 
+    public static boolean NotEmpty(String s) {
+        return !IsNullOrEmpty(s);
+    }
+
     public static boolean WaitLatch(CountDownLatch latch, CountDownLatch... quitLatch) {
         try {
             latch.await();

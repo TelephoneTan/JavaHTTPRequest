@@ -42,6 +42,7 @@ public class HTTPRequest implements Cloneable {
     public final PromiseSemaphore RequestSemaphore;
     public HTTPMethod Method;
     public String URL;
+    public URI URI;
     public List<String[]> CustomizedHeaderList;
     public byte[] RequestBinary;
     public List<String[]> RequestForm;
@@ -188,6 +189,14 @@ public class HTTPRequest implements Cloneable {
         }};
     }
 
+    String encodedURL() {
+        try {
+            return (this.URI != null ? this.URI : new URI(this.URL)).toASCIIString();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     /**
      * 之所以要将一些初始化步骤放到 init 方法中是因为 clone 方法需要调用 init 方法完成克隆。
      */
@@ -201,7 +210,35 @@ public class HTTPRequest implements Cloneable {
             OkHttpClient.Builder clientBuilder = client.newBuilder();
             //
             Request.Builder requestBuilder = new Request.Builder();
-            requestBuilder.url(new URI(URL).toURL());
+            HttpUrl.Builder urlBuilder = new HttpUrl.Builder();
+            {
+                URI u = new URI(encodedURL());
+                String scheme = u.getScheme();
+                if (Util.NotEmpty(scheme)) {
+                    urlBuilder.scheme(scheme);
+                }
+                String userInfo = u.getRawUserInfo();
+                if (Util.NotEmpty(userInfo)) {
+                    urlBuilder.encodedUsername(userInfo);
+                }
+                String host = u.getHost();
+                if (Util.NotEmpty(host)) {
+                    urlBuilder.host(host);
+                }
+                int port = u.getPort();
+                if (port > 0) {
+                    urlBuilder.port(port);
+                }
+                String path = u.getRawPath();
+                if (Util.NotEmpty(path)) {
+                    urlBuilder.encodedPath(path);
+                }
+                String query = u.getRawQuery();
+                if (Util.NotEmpty(query)) {
+                    urlBuilder.encodedQuery(query);
+                }
+            }
+            requestBuilder.url(urlBuilder.build());
             //
             if (RequestForm != null && RequestForm.size() > 0) {
                 StringBuilder sb = new StringBuilder();
@@ -448,6 +485,11 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
+    public HTTPRequest SetURI(URI uri) {
+        this.URI = uri;
+        return this;
+    }
+
     public HTTPRequest SetCookieJar(HTTPFlexibleCookieJar cookieJar) {
         CookieJar = cookieJar;
         return this;
@@ -600,7 +642,10 @@ public class HTTPRequest implements Cloneable {
     public String Serialize() {
         JSONObject jo = new JSONObject();
         jo.put("Method", Method == null ? JSONObject.NULL : Method.name());
-        jo.put("URL", URL == null ? JSONObject.NULL : URL);
+        {
+            String url = encodedURL();
+            jo.put("URL", url == null ? JSONObject.NULL : url);
+        }
         jo.put("CustomizedHeaderList", serializeHeaderList(CustomizedHeaderList));
         jo.put("RequestBinary", RequestBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(RequestBinary));
         jo.put("RequestForm", serializeHeaderList(RequestForm));
