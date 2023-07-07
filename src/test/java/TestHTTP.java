@@ -111,7 +111,6 @@ public class TestHTTP {
         HTTPRequest request = new HTTPRequest()
                 .SetMethod(HTTPMethod.GET)
                 .SetURI(new URI("http", IDN.toASCII("腾讯。中国"), null, "%20  你 好=1+2/+\\3+世界\\/?", null))
-                .SetBuggyServer(true)
                 .SetProxy(new NetworkProxy(Proxy.Type.HTTP, "172.28.64.1", 7892));
         request.Deserialize(request.Serialize())
                 .String()

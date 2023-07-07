@@ -43,7 +43,6 @@ public class HTTPRequest implements Cloneable {
     public HTTPMethod Method;
     public String URL;
     public URI URI;
-    public Boolean BuggyServer;
     public List<String[]> CustomizedHeaderList;
     public byte[] RequestBinary;
     public List<String[]> RequestForm;
@@ -192,7 +191,7 @@ public class HTTPRequest implements Cloneable {
 
     String encodedURL() {
         try {
-            return (this.URI != null ? this.URI : new URI(this.URL)).toASCIIString();
+            return (this.URI != null ? this.URI : new URI(this.URL)).toASCIIString().replaceAll("\\+", "%2b");
         } catch (Throwable e) {
             return null;
         }
@@ -236,11 +235,7 @@ public class HTTPRequest implements Cloneable {
                 }
                 String query = u.getRawQuery();
                 if (Util.NotEmpty(query)) {
-                    urlBuilder.encodedQuery(
-                            BuggyServer != null && BuggyServer ?
-                                    query.replaceAll("\\+", "%2b") :
-                                    query
-                    );
+                    urlBuilder.encodedQuery(query);
                 }
             }
             requestBuilder.url(urlBuilder.build());
@@ -495,11 +490,6 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest SetBuggyServer(Boolean buggyServer) {
-        BuggyServer = buggyServer;
-        return this;
-    }
-
     public HTTPRequest SetCookieJar(HTTPFlexibleCookieJar cookieJar) {
         CookieJar = cookieJar;
         return this;
@@ -656,7 +646,6 @@ public class HTTPRequest implements Cloneable {
             String url = encodedURL();
             jo.put("URL", url == null ? JSONObject.NULL : url);
         }
-        jo.put("BuggyServer", BuggyServer == null ? JSONObject.NULL : BuggyServer);
         jo.put("CustomizedHeaderList", serializeHeaderList(CustomizedHeaderList));
         jo.put("RequestBinary", RequestBinary == null ? JSONObject.NULL : Base64.getEncoder().encodeToString(RequestBinary));
         jo.put("RequestForm", serializeHeaderList(RequestForm));
@@ -712,12 +701,6 @@ public class HTTPRequest implements Cloneable {
             String key = "URL";
             if (jo.has(key)) {
                 URL = jo.isNull(key) ? null : jo.getString(key);
-            }
-        }
-        {
-            String key = "BuggyServer";
-            if (jo.has(key)) {
-                BuggyServer = jo.isNull(key) ? null : jo.getBoolean(key);
             }
         }
         {
