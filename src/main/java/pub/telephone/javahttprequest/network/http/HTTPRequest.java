@@ -1,5 +1,6 @@
 package pub.telephone.javahttprequest.network.http;
 
+import okhttp3.EventListener;
 import okhttp3.*;
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
@@ -11,6 +12,7 @@ import pub.telephone.javahttprequest.network.NetworkProxy;
 import pub.telephone.javahttprequest.network.mime.MIMEType;
 import pub.telephone.javahttprequest.util.Util;
 import pub.telephone.javapromise.async.promise.Promise;
+import pub.telephone.javapromise.async.promise.PromiseCancelledBroadcast;
 import pub.telephone.javapromise.async.promise.PromiseSemaphore;
 import pub.telephone.javapromise.async.task.once.OnceTask;
 
@@ -39,6 +41,7 @@ public class HTTPRequest implements Cloneable {
     static final Duration defaultReadTimeout = Duration.ofSeconds(20);
     static final Duration defaultWriteTimeout = Duration.ofSeconds(20);
     //
+    public final PromiseCancelledBroadcast ScopeCancelledBroadcast;
     public final PromiseSemaphore RequestSemaphore;
     public HTTPMethod Method;
     public String URL;
@@ -74,6 +77,7 @@ public class HTTPRequest implements Cloneable {
     CountDownLatch enqueued;
     CountDownLatch cancelled;
     AtomicReference<Call> call;
+    List<OnceTask<?>> taskList;
     OnceTask<HTTPResult<HTTPRequest>> send;
     OnceTask<HTTPResult<InputStream>> stream;
     OnceTask<HTTPResult<byte[]>> byteArray;
@@ -86,6 +90,15 @@ public class HTTPRequest implements Cloneable {
     //------------------------------------------------
 
     public HTTPRequest(HTTPMethod method, String url, PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = requestSemaphore;
+        this.Method = method;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast, HTTPMethod method, String url, PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = requestSemaphore;
         this.Method = method;
         this.URL = url;
@@ -93,6 +106,15 @@ public class HTTPRequest implements Cloneable {
     }
 
     public HTTPRequest(HTTPMethod method, String url) {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = null;
+        this.Method = method;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast, HTTPMethod method, String url) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = null;
         this.Method = method;
         this.URL = url;
@@ -100,23 +122,53 @@ public class HTTPRequest implements Cloneable {
     }
 
     public HTTPRequest(String url, PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = requestSemaphore;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast, String url, PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = requestSemaphore;
         this.URL = url;
         init();
     }
 
     public HTTPRequest(String url) {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = null;
+        this.URL = url;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast, String url) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = null;
         this.URL = url;
         init();
     }
 
     public HTTPRequest(PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = requestSemaphore;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast, PromiseSemaphore requestSemaphore) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = requestSemaphore;
         init();
     }
 
     public HTTPRequest() {
+        this.ScopeCancelledBroadcast = null;
+        this.RequestSemaphore = null;
+        init();
+    }
+
+    public HTTPRequest(PromiseCancelledBroadcast scopeCancelledBroadcast) {
+        this.ScopeCancelledBroadcast = scopeCancelledBroadcast;
         this.RequestSemaphore = null;
         init();
     }
@@ -197,6 +249,11 @@ public class HTTPRequest implements Cloneable {
         }
     }
 
+    <T> OnceTask<T> addTask(OnceTask<T> task) {
+        taskList.add(task);
+        return task;
+    }
+
     /**
      * 之所以要将一些初始化步骤放到 init 方法中是因为 clone 方法需要调用 init 方法完成克隆。
      */
@@ -205,7 +262,8 @@ public class HTTPRequest implements Cloneable {
         enqueued = new CountDownLatch(1);
         cancelled = new CountDownLatch(1);
         call = new AtomicReference<>(null);
-        send = new OnceTask<>((resolver, rejector) -> {
+        taskList = new ArrayList<>();
+        send = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) -> {
             //
             OkHttpClient.Builder clientBuilder = client.newBuilder();
             //
@@ -361,7 +419,23 @@ public class HTTPRequest implements Cloneable {
             }
             //
             enqueued.countDown();
-            Call call = clientBuilder.build().newCall(requestBuilder.build());
+            Call call = clientBuilder.eventListener(new EventListener() {
+                final AtomicReference<Object> key = new AtomicReference<>();
+
+                @Override
+                public void callStart(@NotNull Call call) {
+                    if (ScopeCancelledBroadcast != null) {
+                        key.set(ScopeCancelledBroadcast.Listen(call::cancel));
+                    }
+                }
+
+                @Override
+                public void callEnd(@NotNull Call call) {
+                    if (ScopeCancelledBroadcast != null) {
+                        ScopeCancelledBroadcast.UnListen(key.get());
+                    }
+                }
+            }).build().newCall(requestBuilder.build());
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(@NotNull Call call, @NotNull IOException e) {
@@ -417,8 +491,8 @@ public class HTTPRequest implements Cloneable {
                 }
                 return call;
             });
-        }, RequestSemaphore);
-        stream = new OnceTask<>((resolver, rejector) ->
+        }, RequestSemaphore));
+        stream = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(send.Do().Then(value -> {
                     if (value.Result.response != null) {
                         ResponseBody body = value.Result.response.body();
@@ -431,29 +505,29 @@ public class HTTPRequest implements Cloneable {
                         throw new Exception("No response found");
                     }
                 }))
-        );
-        byteArray = new OnceTask<>((resolver, rejector) ->
+        ));
+        byteArray = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(stream.Do().Then(value -> {
                     ByteArrayOutputStream os = new ByteArrayOutputStream();
                     Util.Transfer(value.Result, os);
                     value.Request.responseBinary = os.toByteArray();
                     return result(value.Request.responseBinary);
                 }))
-        );
-        string = new OnceTask<>((resolver, rejector) ->
+        ));
+        string = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(byteArray.Do().Then(value ->
                         result(new String(value.Result, calculateCharset(value, StandardCharsets.UTF_8)))
                 ))
-        );
-        jsonObject = new OnceTask<>((resolver, rejector) ->
+        ));
+        jsonObject = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(string.Do().Then(value -> result(new JSONObject(value.Result))))
-        );
-        jsonArray = new OnceTask<>((resolver, rejector) ->
+        ));
+        jsonArray = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(string.Do().Then(value -> result(new JSONArray(value.Result))))
-        );
-        htmlDocument = new OnceTask<>((resolver, rejector) ->
+        ));
+        htmlDocument = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(string.Do().Then(value -> result(Jsoup.parse(value.Result))))
-        );
+        ));
         //
         synchronized (this) {
             initialized++;
@@ -882,7 +956,9 @@ public class HTTPRequest implements Cloneable {
 
     public void Cancel() {
         afterInit(() -> {
-            send.Cancel();
+            for (OnceTask<?> task : taskList) {
+                task.Cancel();
+            }
             this.call.updateAndGet(prev -> {
                 cancelled.countDown();
                 if (prev != null) {
