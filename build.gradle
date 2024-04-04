@@ -49,7 +49,7 @@ dependencies {
     api 'com.squareup.okhttp3:okhttp:5.0.0-alpha.12'
     api 'org.json:json:20231013'
     api 'org.jsoup:jsoup:1.15.3'
-    api 'pub.telephone:java-promise:5.0.1'
+    api 'pub.telephone:java-promise:5.1.0'
 }
 
 test {
