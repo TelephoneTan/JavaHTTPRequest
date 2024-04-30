@@ -1,10 +1,17 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'org.jetbrains.kotlin.jvm'
 }
 
 group 'org.example'
 version '1.0-SNAPSHOT'
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xjvm-default=all-compatibility")
+    }
+}
 
 apply from: "./local.build.gradle"
 
@@ -49,7 +56,7 @@ dependencies {
     api 'com.squareup.okhttp3:okhttp:5.0.0-alpha.12'
     api 'org.json:json:20231013'
     api 'org.jsoup:jsoup:1.15.3'
-    api 'pub.telephone:java-promise:5.2.0'
+    api 'pub.telephone:java-promise:5.3.0'
 }
 
 test {

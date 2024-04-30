@@ -667,6 +667,10 @@ public class HTTPRequest implements Cloneable {
         });
     }
 
+    HTTPRequest clone(PromiseCancelledBroadcast scopeCancelledBroadcast) {
+        return clone(scopeCancelledBroadcast, null);
+    }
+
     HTTPRequest clone(PromiseCancelledBroadcast scopeCancelledBroadcast, PromiseSemaphore requestSemaphore) {
         return afterInit(() -> {
             try {
