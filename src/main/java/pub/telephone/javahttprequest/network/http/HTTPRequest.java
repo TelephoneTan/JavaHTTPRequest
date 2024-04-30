@@ -667,8 +667,7 @@ public class HTTPRequest implements Cloneable {
         });
     }
 
-    @Override
-    public HTTPRequest clone() {
+    HTTPRequest clone(PromiseCancelledBroadcast scopeCancelledBroadcast, PromiseSemaphore requestSemaphore) {
         return afterInit(() -> {
             try {
                 HTTPRequest clone = (HTTPRequest) super.clone();
@@ -688,13 +687,19 @@ public class HTTPRequest implements Cloneable {
                 if (RequestBinary != null) {
                     clone.RequestBinary = RequestBinary.clone();
                 }
-                clone.init(this.scopeCancelledBroadcast, this.requestSemaphore);
+                clone.init(scopeCancelledBroadcast, requestSemaphore);
                 //
                 return clone;
             } catch (CloneNotSupportedException e) {
                 throw new AssertionError();
             }
         });
+    }
+
+    @SuppressWarnings("MethodDoesntCallSuperMethod")
+    @Override
+    public HTTPRequest clone() {
+        return clone(scopeCancelledBroadcast, requestSemaphore);
     }
 
     public String Serialize() {
