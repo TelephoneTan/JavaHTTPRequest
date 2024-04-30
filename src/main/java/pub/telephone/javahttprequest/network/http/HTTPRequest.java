@@ -76,7 +76,8 @@ public class HTTPRequest implements Cloneable {
     CountDownLatch saved;
     CountDownLatch enqueued;
     CountDownLatch cancelled;
-    AtomicReference<Call> call;
+    Object callMutex;
+    Call call;
     List<OnceTask<?>> taskList;
     OnceTask<HTTPResult<HTTPRequest>> send;
     OnceTask<HTTPResult<InputStream>> stream;
@@ -261,7 +262,11 @@ public class HTTPRequest implements Cloneable {
         saved = new CountDownLatch(1);
         enqueued = new CountDownLatch(1);
         cancelled = new CountDownLatch(1);
-        call = new AtomicReference<>(null);
+        callMutex = new Object();
+        //noinspection SynchronizeOnNonFinalField
+        synchronized (callMutex) {
+            call = null;
+        }
         taskList = new ArrayList<>();
         send = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) -> {
             //
@@ -482,15 +487,16 @@ public class HTTPRequest implements Cloneable {
                     resolver.Resolve(result(HTTPRequest.this));
                 }
             });
-            this.call.updateAndGet(prev -> {
+            //noinspection SynchronizeOnNonFinalField
+            synchronized (callMutex) {
                 try {
                     if (cancelled.await(0, TimeUnit.SECONDS)) {
                         call.cancel();
                     }
                 } catch (InterruptedException ignored) {
                 }
-                return call;
-            });
+                this.call = call;
+            }
         }, RequestSemaphore));
         stream = addTask(new OnceTask<>(ScopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(send.Do().Then(value -> {
@@ -959,13 +965,13 @@ public class HTTPRequest implements Cloneable {
             for (OnceTask<?> task : taskList) {
                 task.Cancel();
             }
-            this.call.updateAndGet(prev -> {
+            //noinspection SynchronizeOnNonFinalField
+            synchronized (callMutex) {
                 cancelled.countDown();
-                if (prev != null) {
-                    prev.cancel();
+                if (this.call != null) {
+                    this.call.cancel();
                 }
-                return prev;
-            });
+            }
         });
     }
 
