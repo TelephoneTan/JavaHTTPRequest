@@ -13,6 +13,11 @@ kotlin {
     }
 }
 
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 apply from: "./local.build.gradle"
 
 publishing {
@@ -30,7 +35,7 @@ publishing {
         gpr(MavenPublication) {
             groupId = 'pub.telephone'
             artifactId = 'java-http-request'
-            version = '10.0.0'
+            version = '10.0.1'
 
             from(components.java)
         }
@@ -56,7 +61,7 @@ dependencies {
     api 'com.squareup.okhttp3:okhttp:5.0.0-alpha.12'
     api 'org.json:json:20231013'
     api 'org.jsoup:jsoup:1.15.3'
-    api 'pub.telephone:java-promise:5.3.0'
+    api 'pub.telephone:java-promise:5.3.1'
 }
 
 test {
