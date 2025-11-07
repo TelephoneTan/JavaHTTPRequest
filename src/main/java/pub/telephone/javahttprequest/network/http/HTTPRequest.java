@@ -28,12 +28,13 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static pub.telephone.javahttprequest.network.mime.MIMEType.ApplicationOctetStream;
 import static pub.telephone.javahttprequest.network.mime.MIMEType.TextPlainUTF8;
 
 public class HTTPRequest implements Cloneable {
-    static final OkHttpClient client = new OkHttpClient();
+    static final OkHttpClient defaultClient = new OkHttpClient();
     static final boolean defaultIsQuickTest = false;
     static final boolean defaultFollowRedirect = true;
     static final int defaultStatusCode = 0;
@@ -62,6 +63,7 @@ public class HTTPRequest implements Cloneable {
     public Boolean AutoSendCookies;
     public Boolean AutoReceiveCookies;
     public NetworkProxy Proxy;
+    public Function<HTTPRequest, OkHttpClient> SelectClient;
     //================================================
     public int StatusCode = defaultStatusCode;
     public String StatusMessage;
@@ -247,6 +249,13 @@ public class HTTPRequest implements Cloneable {
         }
         taskList = new ArrayList<>();
         send = addTask(new OnceTask<>(scopeCancelledBroadcast, (resolver, rejector) -> {
+            OkHttpClient client = null;
+            if (SelectClient != null) {
+                client = SelectClient.apply(this);
+            }
+            if (client == null) {
+                client = defaultClient;
+            }
             //
             OkHttpClient.Builder clientBuilder = client.newBuilder();
             //
@@ -580,6 +589,11 @@ public class HTTPRequest implements Cloneable {
 
     public HTTPRequest SetProxy(NetworkProxy proxy) {
         Proxy = proxy;
+        return this;
+    }
+
+    public HTTPRequest SetSelectClient(Function<HTTPRequest, OkHttpClient> selectClient) {
+        SelectClient = selectClient;
         return this;
     }
 
