@@ -35,7 +35,7 @@ publishing {
         gpr(MavenPublication) {
             groupId = 'pub.telephone'
             artifactId = 'java-http-request'
-            version = '10.1.0'
+            version = '10.1.1'
 
             from(components.java)
         }
@@ -70,4 +70,8 @@ test {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
 }
