@@ -63,7 +63,7 @@ public class HTTPRequest implements Cloneable {
     public Boolean AutoSendCookies;
     public Boolean AutoReceiveCookies;
     public NetworkProxy Proxy;
-    public Function<HTTPRequest, OkHttpClient> SelectClient;
+    public Function<HTTPRequest, Promise<OkHttpClient>> SelectClient;
     //================================================
     public int StatusCode = defaultStatusCode;
     public String StatusMessage;
@@ -249,241 +249,247 @@ public class HTTPRequest implements Cloneable {
         }
         taskList = new ArrayList<>();
         send = addTask(new OnceTask<>(scopeCancelledBroadcast, (resolver, rejector) -> {
-            OkHttpClient client = null;
+            Promise<OkHttpClient> clientP = null;
             if (SelectClient != null) {
-                client = SelectClient.apply(this);
+                clientP = SelectClient.apply(this);
             }
-            if (client == null) {
-                client = defaultClient;
+            if (clientP == null) {
+                clientP = Promise.Resolve(defaultClient);
             }
             //
-            OkHttpClient.Builder clientBuilder = client.newBuilder();
-            //
-            Request.Builder requestBuilder = new Request.Builder();
-            HttpUrl.Builder urlBuilder = new HttpUrl.Builder();
-            {
-                URI u = new URI(encodedURL());
-                String scheme = u.getScheme();
-                if (Util.NotEmpty(scheme)) {
-                    urlBuilder.scheme(scheme);
+            clientP.Then(client -> {
+                if (client == null) {
+                    client = defaultClient;
                 }
-                String userInfo = u.getRawUserInfo();
-                if (Util.NotEmpty(userInfo)) {
-                    urlBuilder.encodedUsername(userInfo);
-                }
-                String host = u.getHost();
-                if (Util.NotEmpty(host)) {
-                    urlBuilder.host(host);
-                }
-                int port = u.getPort();
-                if (port > 0) {
-                    urlBuilder.port(port);
-                }
-                String path = u.getRawPath();
-                if (Util.NotEmpty(path)) {
-                    urlBuilder.encodedPath(path);
-                }
-                String query = u.getRawQuery();
-                if (Util.NotEmpty(query)) {
-                    urlBuilder.encodedQuery(query);
-                }
-            }
-            requestBuilder.url(urlBuilder.build());
-            //
-            if (RequestForm != null && RequestForm.size() > 0) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < RequestForm.size(); i++) {
-                    String[] kv = RequestForm.get(i);
-                    if (kv != null && kv.length > 0) {
-                        if (i > 0) {
-                            sb.append("&");
-                        }
-                        sb.append(URLEncoder.encode(Util.GetEmptyStringFromNull(kv[0]), StandardCharsets.UTF_8.name()));
-                        if (kv.length > 1) {
-                            sb.append("=")
-                                    .append(
-                                            URLEncoder.encode(
-                                                    Util.GetEmptyStringFromNull(kv[1]), StandardCharsets.UTF_8.name()
-                                            )
-                                    );
-                        }
+                OkHttpClient.Builder clientBuilder = client.newBuilder();
+                //
+                Request.Builder requestBuilder = new Request.Builder();
+                HttpUrl.Builder urlBuilder = new HttpUrl.Builder();
+                {
+                    URI u = new URI(encodedURL());
+                    String scheme = u.getScheme();
+                    if (Util.NotEmpty(scheme)) {
+                        urlBuilder.scheme(scheme);
+                    }
+                    String userInfo = u.getRawUserInfo();
+                    if (Util.NotEmpty(userInfo)) {
+                        urlBuilder.encodedUsername(userInfo);
+                    }
+                    String host = u.getHost();
+                    if (Util.NotEmpty(host)) {
+                        urlBuilder.host(host);
+                    }
+                    int port = u.getPort();
+                    if (port > 0) {
+                        urlBuilder.port(port);
+                    }
+                    String path = u.getRawPath();
+                    if (Util.NotEmpty(path)) {
+                        urlBuilder.encodedPath(path);
+                    }
+                    String query = u.getRawQuery();
+                    if (Util.NotEmpty(query)) {
+                        urlBuilder.encodedQuery(query);
                     }
                 }
-                if (sb.length() > 0) {
-                    RequestBody = okhttp3.RequestBody.create(sb.toString(), MediaType.parse(MIMEType.XWWWFormURLEncoded.Name));
-                }
-            } else if (RequestString != null && !RequestString.isEmpty()) {
-                RequestBody = okhttp3.RequestBody.create(
-                        RequestString,
-                        MediaType.parse(
-                                RequestContentType == null ?
-                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
-                                                TextPlainUTF8.Name :
-                                                RequestContentTypeHeader
-                                        ) :
-                                        RequestContentType.Name
-                        )
-                );
-            } else if (RequestFile != null) {
-                RequestBody = okhttp3.RequestBody.create(RequestFile, MediaType.parse(
-                                RequestContentType == null ?
-                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
-                                                ApplicationOctetStream.Name :
-                                                RequestContentTypeHeader
-                                        ) :
-                                        RequestContentType.Name
-                        )
-                );
-            } else if (RequestBinary != null && RequestBinary.length > 0) {
-                RequestBody = okhttp3.RequestBody.create(RequestBinary, MediaType.parse(
-                                RequestContentType == null ?
-                                        (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
-                                                ApplicationOctetStream.Name :
-                                                RequestContentTypeHeader
-                                        ) :
-                                        RequestContentType.Name
-                        )
-                );
-            }
-            //
-            if (Method == null) {
-                Method = HTTPMethod.GET;
-            }
-            //
-            switch (Method) {
-                case PUT:
-                case POST:
-                case PATCH:
-                    if (RequestBody == null) {
-                        RequestBody = okhttp3.RequestBody.create(new byte[0]);
-                    }
-            }
-            //
-            requestBuilder.method(Method.Name, RequestBody);
-            //
-            if (CustomizedHeaderList != null) {
-                for (String[] kv : CustomizedHeaderList) {
-                    String key = null;
-                    String value = null;
-                    if (kv.length > 0) {
-                        key = kv[0];
-                        if (kv.length > 1) {
-                            value = kv[1];
-                        }
-                    }
-                    requestBuilder.addHeader(Util.GetEmptyStringFromNull(key), Util.GetEmptyStringFromNull(value));
-                }
-            }
-            //
-            clientBuilder.followRedirects(FollowRedirect).followSslRedirects(FollowRedirect);
-            //
-            if (Timeout == null) {
-                Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
-            }
-            if (IsQuickTest) {
-                ConnectTimeout = ReadTimeout = WriteTimeout = Duration.ofMillis(500);
-                Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
-            }
-            clientBuilder.callTimeout(Timeout);
-            clientBuilder.connectTimeout(ConnectTimeout);
-            clientBuilder.readTimeout(ReadTimeout);
-            clientBuilder.writeTimeout(WriteTimeout);
-            //
-            if (CookieJar != null) {
-                if (AutoSendCookies != null && AutoReceiveCookies != null) {
-                    CookieJar = CookieJar.WithReadWrite(AutoSendCookies, AutoReceiveCookies);
-                } else if (AutoSendCookies != null) {
-                    CookieJar = CookieJar.WithRead(AutoSendCookies);
-                } else if (AutoReceiveCookies != null) {
-                    CookieJar = CookieJar.WithWrite(AutoReceiveCookies);
-                }
-                clientBuilder.cookieJar(CookieJar);
-            }
-            //
-            if (Proxy != null) {
-                clientBuilder.proxy(Proxy.Proxy());
-            } else {
-                clientBuilder.proxySelector(ProxySelector.getDefault());
-            }
-            //
-            if (cancelled.await(0, TimeUnit.SECONDS)) {
-                return;
-            }
-            //
-            enqueued.countDown();
-            Call call = clientBuilder.eventListener(new EventListener() {
-                final AtomicReference<Object> key = new AtomicReference<>();
-
-                @Override
-                public void callStart(@NotNull Call call) {
-                    if (scopeCancelledBroadcast != null) {
-                        key.set(scopeCancelledBroadcast.Listen(call::cancel));
-                    }
-                }
-
-                @Override
-                public void callEnd(@NotNull Call call) {
-                    if (scopeCancelledBroadcast != null) {
-                        scopeCancelledBroadcast.UnListen(key.get());
-                    }
-                }
-            }).build().newCall(requestBuilder.build());
-            call.enqueue(new Callback() {
-                @Override
-                public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                    Util.WaitLatch(enqueued);
-                    //
-                    rejector.Reject(e);
-                }
-
-                @Override
-                public void onResponse(@NotNull Call call, @NotNull Response response) {
-                    Util.WaitLatch(enqueued);
-                    //
-                    send.Do().Catch(reason -> {
-                        response.close();
-                        return null;
-                    }).ForCancel(response::close);
-                    //
-                    StatusCode = response.code();
-                    StatusMessage = response.message();
-                    //
-                    Headers headers = response.headers();
-                    Map<String, List<String>> multimap = headers.toMultimap();
-                    ResponseHeaderMap = new HashMap<>();
-                    for (String key : multimap.keySet()) {
-                        List<String> value = multimap.get(key);
-                        if (key != null) {
-                            key = key.toLowerCase();
-                        }
-                        ResponseHeaderMap.put(key, value);
-                    }
-                    //
-                    ResponseHeaderList = new ArrayList<>();
-                    if (!ResponseHeaderMap.isEmpty()) {
-                        for (String key : ResponseHeaderMap.keySet()) {
-                            List<String> valueList = ResponseHeaderMap.get(key);
-                            for (String value : valueList) {
-                                ResponseHeaderList.add(new String[]{key, value});
+                requestBuilder.url(urlBuilder.build());
+                //
+                if (RequestForm != null && RequestForm.size() > 0) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < RequestForm.size(); i++) {
+                        String[] kv = RequestForm.get(i);
+                        if (kv != null && kv.length > 0) {
+                            if (i > 0) {
+                                sb.append("&");
+                            }
+                            sb.append(URLEncoder.encode(Util.GetEmptyStringFromNull(kv[0]), StandardCharsets.UTF_8.name()));
+                            if (kv.length > 1) {
+                                sb.append("=")
+                                        .append(
+                                                URLEncoder.encode(
+                                                        Util.GetEmptyStringFromNull(kv[1]), StandardCharsets.UTF_8.name()
+                                                )
+                                        );
                             }
                         }
                     }
-                    //
-                    HTTPRequest.this.response = response;
-                    //
-                    resolver.Resolve(result(HTTPRequest.this));
-                }
-            });
-            //noinspection SynchronizeOnNonFinalField
-            synchronized (callMutex) {
-                try {
-                    if (cancelled.await(0, TimeUnit.SECONDS)) {
-                        call.cancel();
+                    if (sb.length() > 0) {
+                        RequestBody = okhttp3.RequestBody.create(sb.toString(), MediaType.parse(MIMEType.XWWWFormURLEncoded.Name));
                     }
-                } catch (InterruptedException ignored) {
+                } else if (RequestString != null && !RequestString.isEmpty()) {
+                    RequestBody = okhttp3.RequestBody.create(
+                            RequestString,
+                            MediaType.parse(
+                                    RequestContentType == null ?
+                                            (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                    TextPlainUTF8.Name :
+                                                    RequestContentTypeHeader
+                                            ) :
+                                            RequestContentType.Name
+                            )
+                    );
+                } else if (RequestFile != null) {
+                    RequestBody = okhttp3.RequestBody.create(RequestFile, MediaType.parse(
+                                    RequestContentType == null ?
+                                            (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                    ApplicationOctetStream.Name :
+                                                    RequestContentTypeHeader
+                                            ) :
+                                            RequestContentType.Name
+                            )
+                    );
+                } else if (RequestBinary != null && RequestBinary.length > 0) {
+                    RequestBody = okhttp3.RequestBody.create(RequestBinary, MediaType.parse(
+                                    RequestContentType == null ?
+                                            (RequestContentTypeHeader == null || RequestContentTypeHeader.isEmpty() ?
+                                                    ApplicationOctetStream.Name :
+                                                    RequestContentTypeHeader
+                                            ) :
+                                            RequestContentType.Name
+                            )
+                    );
                 }
-                this.call = call;
-            }
+                //
+                if (Method == null) {
+                    Method = HTTPMethod.GET;
+                }
+                //
+                switch (Method) {
+                    case PUT:
+                    case POST:
+                    case PATCH:
+                        if (RequestBody == null) {
+                            RequestBody = okhttp3.RequestBody.create(new byte[0]);
+                        }
+                }
+                //
+                requestBuilder.method(Method.Name, RequestBody);
+                //
+                if (CustomizedHeaderList != null) {
+                    for (String[] kv : CustomizedHeaderList) {
+                        String key = null;
+                        String value = null;
+                        if (kv.length > 0) {
+                            key = kv[0];
+                            if (kv.length > 1) {
+                                value = kv[1];
+                            }
+                        }
+                        requestBuilder.addHeader(Util.GetEmptyStringFromNull(key), Util.GetEmptyStringFromNull(value));
+                    }
+                }
+                //
+                clientBuilder.followRedirects(FollowRedirect).followSslRedirects(FollowRedirect);
+                //
+                if (Timeout == null) {
+                    Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
+                }
+                if (IsQuickTest) {
+                    ConnectTimeout = ReadTimeout = WriteTimeout = Duration.ofMillis(500);
+                    Timeout = ConnectTimeout.plus(ReadTimeout).plus(WriteTimeout);
+                }
+                clientBuilder.callTimeout(Timeout);
+                clientBuilder.connectTimeout(ConnectTimeout);
+                clientBuilder.readTimeout(ReadTimeout);
+                clientBuilder.writeTimeout(WriteTimeout);
+                //
+                if (CookieJar != null) {
+                    if (AutoSendCookies != null && AutoReceiveCookies != null) {
+                        CookieJar = CookieJar.WithReadWrite(AutoSendCookies, AutoReceiveCookies);
+                    } else if (AutoSendCookies != null) {
+                        CookieJar = CookieJar.WithRead(AutoSendCookies);
+                    } else if (AutoReceiveCookies != null) {
+                        CookieJar = CookieJar.WithWrite(AutoReceiveCookies);
+                    }
+                    clientBuilder.cookieJar(CookieJar);
+                }
+                //
+                if (Proxy != null) {
+                    clientBuilder.proxy(Proxy.Proxy());
+                } else {
+                    clientBuilder.proxySelector(ProxySelector.getDefault());
+                }
+                //
+                if (cancelled.await(0, TimeUnit.SECONDS)) {
+                    return null;
+                }
+                //
+                enqueued.countDown();
+                Call call = clientBuilder.eventListener(new EventListener() {
+                    final AtomicReference<Object> key = new AtomicReference<>();
+
+                    @Override
+                    public void callStart(@NotNull Call call) {
+                        if (scopeCancelledBroadcast != null) {
+                            key.set(scopeCancelledBroadcast.Listen(call::cancel));
+                        }
+                    }
+
+                    @Override
+                    public void callEnd(@NotNull Call call) {
+                        if (scopeCancelledBroadcast != null) {
+                            scopeCancelledBroadcast.UnListen(key.get());
+                        }
+                    }
+                }).build().newCall(requestBuilder.build());
+                call.enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NotNull Call call, @NotNull IOException e) {
+                        Util.WaitLatch(enqueued);
+                        //
+                        rejector.Reject(e);
+                    }
+
+                    @Override
+                    public void onResponse(@NotNull Call call, @NotNull Response response) {
+                        Util.WaitLatch(enqueued);
+                        //
+                        send.Do().Catch(reason -> {
+                            response.close();
+                            return null;
+                        }).ForCancel(response::close);
+                        //
+                        StatusCode = response.code();
+                        StatusMessage = response.message();
+                        //
+                        Headers headers = response.headers();
+                        Map<String, List<String>> multimap = headers.toMultimap();
+                        ResponseHeaderMap = new HashMap<>();
+                        for (String key : multimap.keySet()) {
+                            List<String> value = multimap.get(key);
+                            if (key != null) {
+                                key = key.toLowerCase();
+                            }
+                            ResponseHeaderMap.put(key, value);
+                        }
+                        //
+                        ResponseHeaderList = new ArrayList<>();
+                        if (!ResponseHeaderMap.isEmpty()) {
+                            for (String key : ResponseHeaderMap.keySet()) {
+                                List<String> valueList = ResponseHeaderMap.get(key);
+                                for (String value : valueList) {
+                                    ResponseHeaderList.add(new String[]{key, value});
+                                }
+                            }
+                        }
+                        //
+                        HTTPRequest.this.response = response;
+                        //
+                        resolver.Resolve(result(HTTPRequest.this));
+                    }
+                });
+                //noinspection SynchronizeOnNonFinalField
+                synchronized (callMutex) {
+                    try {
+                        if (cancelled.await(0, TimeUnit.SECONDS)) {
+                            call.cancel();
+                        }
+                    } catch (InterruptedException ignored) {
+                    }
+                    this.call = call;
+                }
+                return null;
+            });
         }, requestSemaphore));
         stream = addTask(new OnceTask<>(scopeCancelledBroadcast, (resolver, rejector) ->
                 resolver.Resolve(send.Do().Then(value -> {
@@ -592,7 +598,7 @@ public class HTTPRequest implements Cloneable {
         return this;
     }
 
-    public HTTPRequest SetSelectClient(Function<HTTPRequest, OkHttpClient> selectClient) {
+    public HTTPRequest SetSelectClient(Function<HTTPRequest, Promise<OkHttpClient>> selectClient) {
         SelectClient = selectClient;
         return this;
     }
